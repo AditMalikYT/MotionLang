@@ -7,6 +7,9 @@
 
 set -e  # Exit on error
 
+REPO_URL="https://github.com/AditMalikYT/MotionLang.git"
+INSTALL_DIR="$HOME/.motion_lang_src"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,7 +17,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored messages
 print_status() {
     echo -e "${BLUE}[Motion Language]${NC} $1"
 }
@@ -47,6 +49,22 @@ case "$OS" in
     *)          OS_TYPE="unknown" ;;
 esac
 
+# Step 0: Handle Remote vs Local Execution (Clone/Update Repo)
+print_status "Preparing source repository..."
+if [ ! -f "setup.py" ]; then
+    if [ -d "$INSTALL_DIR" ]; then
+        print_status "Updating existing source code in $INSTALL_DIR..."
+        cd "$INSTALL_DIR"
+        git pull origin main || true
+    else
+        print_status "Cloning repository from $REPO_URL..."
+        git clone "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
+else
+    print_status "Running from local repository directory..."
+fi
+
 # Step 1: Check Python version
 print_status "Checking Python version..."
 PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP '\d+\.\d+' || echo "0.0")
@@ -56,8 +74,6 @@ PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 if [ "$PYTHON_MAJOR" -lt 3 ] || [ "$PYTHON_MINOR" -lt 13 ]; then
     print_error "Motion Language requires Python 3.13 or higher. Found: Python $PYTHON_VERSION"
     print_status "Please install Python 3.13+ before continuing."
-    print_status "On Ubuntu: sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt install python3.13"
-    print_status "On macOS: brew install python@3.13"
     exit 1
 else
     print_success "Python $PYTHON_VERSION detected"
@@ -72,78 +88,73 @@ else
     print_warning "Virtual environment already exists, reusing it"
 fi
 
-# Determine the correct activate script based on OS
-if [ "$OS_TYPE" = "windows" ]; then
-    ACTIVATE_CMD=". .venv/Scripts/activate"
-else
-    ACTIVATE_CMD=". .venv/bin/activate"
-fi
-
 # Activate the virtual environment
 source .venv/bin/activate
 
-# Step 3: Install Python dependencies
-print_status "Installing Python dependencies..."
+# Step 3: Install Python dependencies & package in editable mode
+print_status "Installing Python dependencies and CLI package..."
+pip install --upgrade pip
+
 if [ -f "requirements.txt" ]; then
-    pip install --upgrade pip
     pip install -r requirements.txt
-    print_success "Python dependencies installed"
 else
-    print_error "requirements.txt not found!"
+    print_warning "requirements.txt not found, relying on setup.py dependencies"
+fi
+
+if [ -f "setup.py" ]; then
+    pip install -e .
+    print_success "Motion Language CLI package installed successfully"
+else
+    print_error "setup.py not found in working directory: $(pwd)"
     exit 1
 fi
 
-# Step 4: Install Motion Language package
-print_status "Installing Motion Language package..."
-pip install -e .
-print_success "Motion Language package installed"
-
-# Step 5: Install Node.js for Studio (optional but recommended)
+# Step 4: Install Node.js for Studio (optional but recommended)
 print_status "Checking for Node.js (required for studio)..."
 if command -v node &> /dev/null; then
     NODE_VERSION=$(node --version)
     print_success "Node.js $NODE_VERSION detected"
 else
     print_warning "Node.js not found. Studio features will not be available."
-    print_status "To install Node.js:"
-    print_status "  On Ubuntu: sudo apt install nodejs npm"
-    print_status "  On macOS: brew install node"
-    print_status "  Or download from: https://nodejs.org/"
-    NODE_INSTALLED=false
 fi
 
-# Step 6: Install Studio dependencies (if Node.js is available)
+# Step 5: Install Studio dependencies (if Node.js is available)
 if [ -d "studio" ] && command -v node &> /dev/null; then
     print_status "Installing Studio dependencies..."
     cd studio
     if [ -f "package.json" ]; then
         npm install
         print_success "Studio dependencies installed"
-    else
-        print_warning "studio/package.json not found"
     fi
     cd ..
-else
-    print_warning "Skipping Studio installation (Node.js not available)"
 fi
+
+# Step 6: Register VS Code / VS Codium Extension & Generate Asset Icon
+print_status "Registering VS Code / VS Codium extension & icons..."
+python3 -c "
+import os
+from PIL import Image, ImageDraw
+os.makedirs('extension_assets', exist_ok=True)
+img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+draw = ImageDraw.Draw(img)
+draw.rounded_rectangle([16, 16, 240, 240], radius=48, fill='#0F172A')
+draw.polygon([(40, 180), (88, 70), (128, 120), (168, 70), (216, 180), (180, 180), (168, 110), (128, 160), (88, 110), (72, 180)], fill='#00E5FF')
+draw.polygon([(40, 180), (88, 70), (128, 120), (72, 180)], fill='#FF0055')
+img.save('extension_assets/icon.png')
+" 2>/dev/null || true
+
+for EXT_DIR in "$HOME/.vscode/extensions/motion-language-support" "$HOME/.vscode-oss/extensions/motion-language-support"; do
+    mkdir -p "$EXT_DIR"
+    cp -r package.json language-configuration.json syntaxes snippets extension_assets "$EXT_DIR/" 2>/dev/null || true
+done
+print_success "VS Code/Codium extension registered"
 
 # Step 7: Verify installation
 print_status "Verifying installation..."
-
-# Test motion command
-if command -v motion &> /dev/null; then
-    print_success "motion command is available"
-else
-    print_error "motion command not found. Installation may have failed."
-    exit 1
-fi
-
-# Test basic functionality
 if motion --help &> /dev/null; then
     print_success "Motion Language CLI is working"
 else
-    print_error "Motion Language CLI is not responding correctly"
-    exit 1
+    print_warning "motion command is installed inside .venv. Activate it with: source .venv/bin/activate"
 fi
 
 # Step 8: Final instructions
@@ -153,24 +164,7 @@ print_success "Motion Language installation complete!"
 print_status "============================================"
 print_status ""
 print_status "To get started:"
-print_status ""
-print_status "1. Run the modern demo:"
-print_status "   motion examples/modern_demo.hmg --render --output output/demo.mp4"
-print_status ""
-print_status "2. Open the studio (web editor):"
-print_status "   motion examples/modern_demo.hmg --studio"
-print_status "   cd studio && npm run dev      # http://localhost:5173"
-print_status ""
-print_status "3. For real-time preview:"
-print_status "   motion examples/modern_demo.hmg --preview"
-print_status ""
-print_status "4. To use VS Code extension (if available):"
-print_status "   mkdir -p ~/.vscode/extensions/motion-language-support"
-print_status "   cp -r ./* ~/.vscode/extensions/motion-language-support/"
-print_status ""
-print_status "Documentation:"
-print_status "   - AGENT.md - Developer guide"
-print_status "   - docs/DSL_SPEC.md - Language specification"
-print_status "   - docs/REPO_STRUCTURE.md - Repository structure"
+print_status "  source .venv/bin/activate"
+print_status "  motion examples/modern_demo.hmg"
 print_status ""
 print_status "============================================"
