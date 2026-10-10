@@ -76,7 +76,9 @@ def _dynamic_resize(clip, scale_fn):
                 nw = max(1, int(round(w * s)))
                 nh = max(1, int(round(h * s)))
             return (nw, nh)
-        return clip.resize(safe_resize_fn)
+        # NOTE: moviepy 2.x renamed Clip.resize -> Clip.resized (and it
+        # accepts a function of time, applying to the mask as well).
+        return clip.resized(safe_resize_fn)
 
     # moviepy 1.x fallback:
     w, h = clip.size
