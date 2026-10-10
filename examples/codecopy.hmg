@@ -207,7 +207,7 @@ scene:
         render(shape("circle", radius=112, fill="#08182B"), pos=(CX, CY), time=[5.4, 13],
                scale=0 -> 1, ease=ease_in_out,
                fx=[glow(color=CYAN, intensity=1.9, radius=64),
-                   light_sweep(progress=$t, angle=45, speed=0.9, width=0.22, color="#FFFFFF"),
+                   light_sweep(angle=45, speed=0.9, width=0.22, color="#FFFFFF"),
                    pulse(amount=0.055, speed=1.35)])
         render(shape("ellipse", width=560, height=150, fill="none", stroke=VIOLET, stroke_width=2),
                pos=(CX, CY), time=[6.0, 13], opacity=0 -> 0.7, ease=ease_out,
@@ -365,7 +365,7 @@ scene:
                    pos=(CX - 468 + i * 156, CY + 10), time=[26.4 + i * 0.13, 32],
                    scale=0.35 -> 1.0, ease=bounce,
                    fx=[glow(color=CYAN, intensity=1.6, radius=30),
-                       light_sweep(progress=$t, angle=32, speed=0.55, width=0.2, color="#FFFFFF"),
+                       light_sweep(angle=32, speed=0.55, width=0.2, color="#FFFFFF"),
                        vfx_preset("neon_bloom", intensity=1.15)],
                    transition_in="zoom_in(0.45)")
 

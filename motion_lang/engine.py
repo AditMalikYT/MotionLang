@@ -1005,6 +1005,20 @@ class Compositor:
         return clip
 
     @staticmethod
+    def _wipe_mask(direction: str, f: float, w: int, h: int):
+        """Hard-edge reveal mask for fraction ``f`` at size (w, h)."""
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        if direction == "right":
+            m = xx >= (w * (1.0 - f))
+        elif direction == "up":
+            m = yy >= (h * (1.0 - f))
+        elif direction == "down":
+            m = yy < (h * f)
+        else:  # "left"
+            m = xx < (w * f)
+        return m.astype(np.float32)
+
+    @staticmethod
     def _wipe_window(direction: str, duration: float, when: str,
                      w: int, h: int, total: float):
         """Per-frame reveal fraction 0..1 for a wipe edge."""
@@ -1013,18 +1027,9 @@ class Compositor:
             if when == "in":
                 return min(1.0, max(0.0, t / d))
             return 1.0 - min(1.0, max(0.0, (t - (total - d)) / d))
-        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
         def _window(t: float):
-            f = _frac(t)
-            if direction == "right":
-                m = xx >= (w * (1.0 - f))
-            elif direction == "up":
-                m = yy >= (h * (1.0 - f))
-            elif direction == "down":
-                m = yy < (h * f)
-            else:  # "left"
-                m = xx < (w * f)
-            return m.astype(np.float32)
+            return Compositor._wipe_mask(direction, _frac(t), w, h)
+        _window.frac = _frac  # type: ignore[attr-defined]
         return _window
 
     def _apply_wipe(self, clip, wipe_in, wipe_out, duration: float):
@@ -1044,23 +1049,33 @@ class Compositor:
             try:
                 w, h = clip.size
                 window = self._wipe_window(direction, dur, when, w, h, duration)
+                frac = window.frac
+                def _masked(gf, t, _frac=frac, _dir=direction):
+                    m = np.clip(gf(t), 0, 1)
+                    # The mask frame can differ from clip.size when a
+                    # scale animation resizes the layer per frame; rebuild
+                    # the wipe in the frame's own space so the multiply
+                    # never broadcasts mismatched shapes.
+                    if m.ndim == 3:
+                        h2, w2 = m.shape[0], m.shape[1]
+                        wmask = self._wipe_mask(_dir, _frac(t), w2, h2)
+                        return m * wmask[:, :, None]
+                    h2, w2 = m.shape[0], m.shape[1]
+                    return m * self._wipe_mask(_dir, _frac(t), w2, h2)
                 if _MPV2:
                     from moviepy.video.VideoClip import VideoClip as _VC
                     base = clip.mask
                     if base is None:
                         base = _VC(lambda t: np.ones((h, w)),
                                    is_mask=True, duration=clip.duration)
-                    clip = clip.with_mask(base.transform(
-                        lambda gf, t: np.clip(gf(t), 0, 1) * window(t)))
+                    clip = clip.with_mask(base.transform(_masked))
                 else:
                     from moviepy.video.VideoClip import VideoClip as _VC
                     base = clip.mask
                     if base is None:
                         base = _VC(lambda t: np.ones((h, w)),
                                    ismask=True, duration=clip.duration)
-                    clip.mask = base.fl(
-                        lambda gf, t: np.clip(gf(t), 0, 1) * window(t),
-                        keep_duration=True)
+                    clip.mask = base.fl(_masked, keep_duration=True)
             except Exception as exc:
                 print(f"[Engine] Wipe transition failed ({exc}); skipped.")
         return clip
