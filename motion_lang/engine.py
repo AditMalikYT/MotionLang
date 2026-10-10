@@ -62,7 +62,8 @@ def _static_resize(clip, scale=None, size=None):
 
 def _dynamic_resize(clip, scale_fn):
     if _MPV2:
-        return clip.with_effects([_Resize(scale_fn)])
+        safe_scale_fn = lambda t: max(0.01, float(scale_fn(t)))
+        return clip.with_effects([_Resize(safe_scale_fn)])
     # moviepy 1.x: resize(fn) zeroes clip masks (the image-only fun is
     # applied to 0..1 mask floats, truncating them to uint8 0), which makes
     # animated clips vanish in composites. Transform image and mask each
