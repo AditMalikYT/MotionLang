@@ -103,3 +103,7 @@ python tests/test_ae_features.py
 ```
 
 Both suites pass on MoviePy 1.x and 2.x.
+
+
+## License
+This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
