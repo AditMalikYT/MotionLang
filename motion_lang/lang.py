@@ -60,8 +60,10 @@ config_prop: NAME "=" config_value _NL
 ?config_value: RESOLUTION -> res_value
              | expr       -> expr_value
 
-import_stmt: "import" import_names "from" ESCAPED_STRING _NL
-import_names: NAME ("," NAME)*
+import_stmt: "import" imp_list ["from" ESCAPED_STRING] _NL
+imp_list: imp_item ("," imp_item)*
+imp_item: dotted ["as" NAME]
+dotted: NAME ("." NAME)*
 export_stmt: "export" NAME _NL
 
 fn_def: "fn" NAME "(" [params] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
@@ -108,8 +110,8 @@ expr_stmt: expr _NL
      | "true"  -> true_lit
      | "false" -> false_lit
      | NAME "(" [args] ")"                -> call
-     | NAME "." NAME "(" [args] ")"       -> method_call
-     | NAME "." NAME                      -> attr
+     | NAME ("." NAME)+ "(" [args] ")"    -> method_call
+     | NAME ("." NAME)+                  -> attr
      | NAME "[" expr "]"                  -> index
      | NAME                               -> var
      | "(" expr ")"                       -> paren
@@ -251,6 +253,27 @@ class Range:
 
     def __repr__(self):
         return f"{self.start} -> {self.end}"
+
+
+class Stylesheet:
+    """Value bound by ``import x from "theme.css"`` (rules + source path)."""
+
+    def __init__(self, path: str, rules: List[Dict[str, Any]]):
+        self.path = path
+        self.rules = rules
+
+    @property
+    def classes(self) -> List[str]:
+        out: List[str] = []
+        for rule in self.rules or []:
+            for sel in (rule.get("selectors") or rule.get("selector") or []):
+                s = str(sel).strip()
+                if s.startswith(".") and s not in out:
+                    out.append(s)
+        return out
+
+    def __repr__(self):
+        return f"<stylesheet {os.path.basename(self.path)} ({len(self.rules)} rules)>"
 
 
 class Function:
@@ -468,23 +491,116 @@ class Evaluator:
                     self.config["fps"] = int(val)
                 elif name == "mode":
                     self.config["mode"] = str(val)
+        # If a stylesheet import already materialised the compositor, keep it
+        # in sync while nothing has been committed to it yet.
+        comp = self.compositor
+        if comp is not None and not comp.layers and not comp.audio_layers:
+            comp.width = int(self.config["width"])
+            comp.height = int(self.config["height"])
+            comp.fps = int(self.config["fps"])
+            comp.mode = str(self.config["mode"])
         return None
 
     # imports / exports ------------------------------------------------------
     def _stmt_import_stmt(self, node, env):
-        names_node, path_tok = node.children[0], node.children[-1]
-        names = [str(c) for c in names_node.children]
-        path = str(path_tok)
-        if path.startswith('"') or path.startswith("'"):
+        items: List[Tuple[str, Optional[str]]] = []
+        path: Optional[str] = None
+        for ch in node.children:
+            if isinstance(ch, Tree) and ch.data == "imp_list":
+                for item in ch.children:
+                    dotted_parts: List[str] = []
+                    alias: Optional[str] = None
+                    if isinstance(item, Tree) and item.data == "imp_item":
+                        for sub in item.children:
+                            if isinstance(sub, Tree) and sub.data == "dotted":
+                                dotted_parts = [str(t) for t in sub.children]
+                            elif isinstance(sub, Token):
+                                alias = str(sub)
+                    elif isinstance(item, Token):
+                        dotted_parts = [str(item)]
+                    if dotted_parts:
+                        items.append((".".join(dotted_parts), alias))
+            elif isinstance(ch, Token) and ch.type == "ESCAPED_STRING":
+                path = str(ch)
+        if path is not None and (
+                path.startswith('"') or path.startswith("'")):
             path = path[1:-1]
-        module = self._load_module(path)
-        for name in names:
-            if name in module:
-                env.define(name, module[name])
+        if path is None:
+            # Bare ``import math`` / ``import numpy as np``: Python interop.
+            from motion_lang.modules import resolve_py_import
+            for bind, module in resolve_py_import(items, self.base_dir).items():
+                env.define(bind, module)
+                self.defined.add(bind)
+            return None
+        low = path.lower()
+        if low.endswith((".css", ".hmsc")):
+            self._import_stylesheet(path, items, env)
+        elif low.endswith(".py"):
+            self._import_py_file(path, items, env)
+        else:
+            module = self._load_module(path)
+            for dotted, alias in items:
+                name = alias or dotted
+                if "." in dotted:
+                    print(f"[DSL Warning] Dotted name '{dotted}' cannot be "
+                          f"imported from '{path}'.")
+                    continue
+                if name in module:
+                    env.define(name, module[name])
+                    self.defined.add(name)
+                else:
+                    print(f"[DSL Warning] '{name}' not found in module '{path}'.")
+        return None
+
+    def _import_stylesheet(self, path: str,
+                           items: List[Tuple[str, Optional[str]]], env: Env):
+        """``import styles from "theme.css"``: load rules into the compositor.
+
+        The sheet applies globally through the normal cascade (explicit
+        ``render()`` attributes still win); each imported name is also bound
+        to a :class:`Stylesheet` value for introspection.
+        """
+        from motion_lang import style as _css
+        full = path if os.path.isabs(path) else os.path.join(self.base_dir, path)
+        try:
+            rules = _css.parse_css_file(full)
+        except FileNotFoundError:
+            print(f"[DSL Warning] Stylesheet not found: '{path}' (skipped).")
+            return
+        comp = self._ensure_compositor()
+        if comp is not None:
+            comp.style_rules = _css.merge_rules(comp.style_rules, rules)
+            comp.stylesheets.append(os.path.abspath(full))
+            print(f"[Style] Loaded {full} ({len(rules)} rule(s)).")
+        sheet = Stylesheet(path=os.path.abspath(full), rules=rules)
+        for dotted, alias in items:
+            env.define(alias or dotted.split(".")[0], sheet)
+            self.defined.add(alias or dotted.split(".")[0])
+
+    def _import_py_file(self, path: str,
+                        items: List[Tuple[str, Optional[str]]], env: Env):
+        """``import name from "helpers.py"``: bind names from a Python file."""
+        from motion_lang.modules import load_py_file
+        full = path if os.path.isabs(path) else os.path.join(self.base_dir, path)
+        if not os.path.isfile(full):
+            print(f"[DSL Warning] Python file not found: '{path}'.")
+            return
+        try:
+            module = load_py_file(full)
+        except Exception as exc:
+            print(f"[DSL Warning] Failed to import '{path}': {exc}")
+            return
+        stem = os.path.splitext(os.path.basename(full))[0]
+        for dotted, alias in items:
+            name = alias or dotted
+            if hasattr(module, name):
+                env.define(name, getattr(module, name))
+                self.defined.add(name)
+            elif len(items) == 1 and "." not in dotted and dotted == stem:
+                env.define(name, module)
                 self.defined.add(name)
             else:
-                print(f"[DSL Warning] '{name}' not found in module '{path}'.")
-        return None
+                print(f"[DSL Warning] '{name}' not found in '{path}'.")
 
     def _stmt_export_stmt(self, node, env):
         name = str(node.children[0])
@@ -632,8 +748,11 @@ class Evaluator:
         if target.data == "var":
             env.set(str(target.children[0]), value)
         elif target.data == "attr":
-            obj = self.eval(target.children[0], env)
-            name = str(target.children[1])
+            parts = [str(c) for c in target.children]
+            obj = env.get(parts[0])
+            for name in parts[1:-1]:
+                obj = self._get_attr(obj, name)
+            name = parts[-1]
             if isinstance(obj, Instance):
                 obj.attrs[name] = value
             else:
@@ -851,9 +970,11 @@ class Evaluator:
 
     # calls / attributes
     def _eval_attr(self, node, env):
-        obj = self.eval(node.children[0], env)
-        name = str(node.children[1])
-        return self._get_attr(obj, name)
+        parts = [str(c) for c in node.children]
+        obj = env.get(parts[0])
+        for name in parts[1:]:
+            obj = self._get_attr(obj, name)
+        return obj
 
     def _get_attr(self, obj, name):
         if isinstance(obj, Instance):
@@ -863,6 +984,11 @@ class Evaluator:
                 return BoundMethod(obj.cls.methods[name], obj)
             raise LangRuntimeError(
                 f"'{name}' is not a member of {obj.cls.name}.")
+        # Native Python interop: modules, numpy, os.path, ...
+        try:
+            return getattr(obj, name)
+        except AttributeError:
+            pass
         raise LangRuntimeError(f"Cannot read attribute '{name}'.")
 
     def _eval_index(self, node, env):
@@ -871,16 +997,19 @@ class Evaluator:
         return obj[idx]
 
     def _eval_method_call(self, node, env):
-        obj = self.eval(node.children[0], env)
-        name = str(node.children[1])
-        args_node = node.children[2] if len(node.children) > 2 else None
+        names = [str(c) for c in node.children if isinstance(c, Token)]
+        args_node = next((c for c in node.children
+                          if isinstance(c, Tree) and c.data == "args"), None)
+        obj = env.get(names[0])
+        for name in names[1:-1]:
+            obj = self._get_attr(obj, name)
         pos, kw = self.eval_args(args_node, env)
-        method = self._get_attr(obj, name)
+        method = self._get_attr(obj, names[-1])
         if isinstance(method, BoundMethod):
             return self.call_function(method.fn, [method.instance] + pos, kw)
         if callable(method):
             return method(*pos, **kw)
-        raise LangRuntimeError(f"'{name}' is not callable.")
+        raise LangRuntimeError(f"'{names[-1]}' is not callable.")
 
     def _eval_call(self, node, env):
         name = str(node.children[0])
@@ -1057,6 +1186,20 @@ class Evaluator:
 
     def _builtin_audio(self, pos, kw):
         return Asset("audio", self._resolve_path(str(pos[0])))
+
+    def _builtin_load_font(self, pos, kw):
+        """``load_font("Poppins", weight="bold", url=...)`` -> .ttf path.
+
+        Returns ``None`` when the font cannot be resolved (offline, unknown
+        family); ``text()`` then falls back to the default font.
+        """
+        from motion_lang.text_engine import load_font
+        if pos:
+            name = str(pos[0])
+        else:
+            name = str(kw.get("name", kw.get("family", "")))
+        return load_font(name, weight=kw.get("weight", "regular"),
+                         url=kw.get("url"), style=kw.get("style", "normal"))
 
     # -- builtins: scene ops -------------------------------------------------
     def _builtin_render(self, pos, kw):

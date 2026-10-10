@@ -653,6 +653,13 @@ _MODERN_SIGNS = (
     __import__("re").compile(r"(?m)^[ \t]*(?:scene|audio)[ \t]*:"),
     __import__("re").compile(r"(?m)^[ \t]*export[ \t]+[A-Za-z_]\w*"),
     __import__("re").compile(r"\brepeat\b[^\n]*\btimes\b"),
+    # Bare Python imports (no `from`): `import math`, `import numpy as np`.
+    # Requires end-of-line after the name list so legacy
+    # `import style "theme.css"` (quoted path) never matches.
+    __import__("re").compile(
+        r"(?m)^[ \t]*import[ \t]+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
+        r"(?:[ \t]*,[ \t]*[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)*"
+        r"(?:[ \t]+as[ \t]+[A-Za-z_]\w*)?[ \t]*$"),
 )
 
 

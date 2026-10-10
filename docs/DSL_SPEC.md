@@ -314,13 +314,29 @@ audio:
 | `style` | `font` | font family |
 | `fill` | `color` | fill color |
 
-Plus `font` (system or font-dir name; resolved by path → font dir → `fc-match`)
-and `bg_color`.
+Plus `font` (system name, font file path, or a `load_font(...)` result;
+uninstalled families are fetched from Google Fonts and cached) and `bg_color`.
+
+### Typography — `load_font`
+
+```hmg
+head = load_font("Poppins", weight="bold")
+title = text("WAVE RIDER", font=head, size=56)
+
+inline = text("Direct", font="Inter")   // fetched automatically if missing
+```
+
+`load_font(name, weight="regular", style="normal", url=None)` returns a
+`.ttf` path (or `None`, falling back to the default font). Resolution order:
+explicit `url=` (direct font file or Google Fonts `css2` link) → installed
+system fonts (weight-aware) → Google Fonts download, cached at
+`~/.cache/motion_lang/fonts/`. Offline machines degrade gracefully with a
+warning. `weight` accepts names (`"thin"`…`"black"`) or numbers (`400`…`900`).
 
 ### Utilities
 
 `print`, `len`, `range`, `abs`, `min`, `max`, `round`, `int`, `float`, `str`,
-`bool`, `sum`, `list`, `sin`, `cos`.
+`bool`, `sum`, `list`, `sin`, `cos`, `load_font`.
 
 ---
 
@@ -399,6 +415,55 @@ scene:
   top-level definitions are exported.
 - Module functions/classes run in the caller's evaluator, so their `layer`
   blocks commit normally.
+
+### Python interop
+
+Any installed Python library (plus local `.py` helpers) is importable
+directly — no `from` clause means a Python import:
+
+```hmg
+import math
+import numpy as np
+import os.path
+import helpers                  // ./helpers.py next to the script
+import shout from "helpers.py"  // symbols from a Python file
+
+angle = math.sin(np.pi / 2)
+dest = os.path.join("frames", "out.mp4")
+```
+
+Rules: `import a.b.c` binds `a` (standard Python semantics);
+`import x as y` binds `y`; dotted attribute chains (`os.path.join`,
+`arr.shape`) and calls work natively. A failed import warns and the script
+continues. Note: imports execute real Python code — only import code you
+trust, as with Python itself.
+
+### CSS stylesheets
+
+```hmg
+import styles from "theme.css"
+
+text("Hello World", class="glow-title", pos=(100, 200))
+```
+
+```css
+/* theme.css */
+.glow-title {
+    font-family: "Poppins";
+    font-size: 80px;
+    color: #00E5FF;
+    glow: #00E5FF 1.5;
+}
+```
+
+The sheet loads into the compositor cascade (explicit `render()` attributes
+still win; `fx` stacks concatenate, style first). Each imported name binds a
+stylesheet value (`styles.classes` lists its classes). Supported selectors:
+`*`, `.class`, `#id`; supported properties include layout (`left`/`top`,
+`width`/`height`, `scale`), appearance (`color`, `font-size`, `font-family`,
+`background-color`, `border-radius`, `opacity`), effects (`glow`, `blur`,
+`box-shadow`, `filter`, `vfx`) and motion (`easing`, `transition-in/out`).
+Legacy brace syntax keeps its own form: `import style "theme.css"`.
 
 ---
 

@@ -321,6 +321,13 @@ def make_text_image(text: str, font: str = "default", color: str = "#FFFFFF",
     font_path = None
     if font and font.lower() not in ("default", "none", ""):
         font_path = _resolve_font_path(font)
+        if font_path is None:
+            # Google Fonts / custom typography: fetch on demand (cached).
+            try:
+                from motion_lang.text_engine import load_font as _load_font
+                font_path = _load_font(font)
+            except Exception:
+                font_path = None
     if font_path is None:
         font_path = _DEFAULT_FONT
     try:

@@ -6,7 +6,13 @@ Welcome to the **Motion Language** repository. This document outlines the projec
 
 - **Creator / Author:** Adit Malik
 - **File Extension:** `.hmg`
-- **Language Version:** Motion Language 1.0 (Modern DSL)
+- **Language Version:** Motion Language 1.1 (Modern DSL)
+- **Core Stack:** Python 3.13+, Lark (Parser), MoviePy (Compositor), Pillow & OpenCV (Image/VFX Processing), Remotion (Web Studio Preview), Google Fonts (Dynamic Typography)
+
+## New Language Features (v1.1)
+- **Python Interop:** Import any Python module (`import math`, `import numpy as np`, `import os.path`) directly in `.hmg`. Dotted attribute chains and calls work natively; local `.py` helpers resolve via bare `import helpers` or `import name from "file.py"` (see `motion_lang/modules.py`).
+- **Google Fonts:** Load web fonts dynamically via `load_font("Poppins", weight="bold")` or direct URLs (`url=`); system fonts first, Google Fonts fetch + cache (`~/.cache/motion_lang/fonts/`), graceful offline fallback (see `motion_lang/text_engine.py`).
+- **CSS Stylesheets:** Import `.css` files (`import styles from "theme.css"`) and apply classes to shapes and text layers (`class="glow-title"`); sheets join the compositor cascade (see `motion_lang/style.py`).
 - **Core Stack:** Python 3.13+, Lark (Parser), MoviePy (Compositor), Pillow & OpenCV (Image/VFX Processing), Remotion (Web Studio Preview)
 - **License:** Independent / Proprietary (Adit Malik)
 - **Repository Structure:** Professional-grade, inspired by python/cpython, rust-lang/rust
@@ -27,6 +33,8 @@ motion_lang/
 │   ├── cli.py                  # Command-line interface (motion command)
 │   ├── parser.py               # Legacy brace syntax parser (Lark grammar)
 │   ├── lang.py                 # Modern DSL interpreter (indentation-based)
+│   ├── modules.py              # Python interop (import math/numpy/.py files)
+│   ├── text_engine.py          # Dynamic typography (local + Google Fonts)
 │   ├── engine.py               # MoviePy compositor & animation system
 │   ├── vfx.py                  # Visual effects pipeline (AE-style fx stack)
 │   ├── shapes.py               # Geometric primitives & shape rendering
@@ -90,13 +98,22 @@ scene:
 // Import from file
 import Component1, Component2 from "path/to/file.hmg"
 
+// Python interop (v1.1) — no `from` clause
+import math
+import numpy as np
+import helpers                  // ./helpers.py next to the script
+import shout from "helpers.py"  // symbols from a Python file
+
+// CSS stylesheets (v1.1)
+import styles from "theme.css"
+
 // Export
 export MyComponent
 ```
 
 #### 4. **Rendering Primitives**
 - `shape("type", ...)` - rect, circle, ellipse, polygon, line, path
-- `text("content", ...)` - styled text rendering
+- `text("content", ...)` - styled text rendering (`load_font("Poppins", weight="bold")` for web fonts)
 - `image("path")` / `video("path")` - media assets
 - `wiki("query")` - fetch from Wikipedia
 - `audio("path")` - audio clips
@@ -209,7 +226,18 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 - Configuration management
 - File watching & development server
 
-### 9. **Asset Fetcher (fetcher.py)**
+### 10. **Python Interop (modules.py)**
+- Dotted imports via importlib, with local-file fallback against the script dir
+- `import a.b.c` binds `a`; `import x as y` binds `y` (standard semantics)
+- `.py` file imports via `import name from "file.py"` or bare `import file`
+- Failures warn and continue; native attribute chains (`os.path.join`)
+
+### 11. **Font Engine (text_engine.py)**
+- Weight/style-aware local font search (+ verified `fc-match`)
+- Google Fonts on-demand fetch (Fontsource CDN, CSS API fallback)
+- Disk cache at `~/.cache/motion_lang/fonts/`; offline-safe `None` fallback
+
+### 12. **Asset Fetcher (fetcher.py)**
 - Image & video asset loading
 - Wikipedia integration
 - Caching mechanism
@@ -251,6 +279,8 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 | cli.py | Command-line interface | `main()`, `parse_args()` |
 | parser.py | Legacy syntax parsing | Lark grammar, `_extract_fx_list()` |
 | lang.py | Modern DSL interpreter | `Evaluator`, `Env`, `Asset`, `Layer` |
+| modules.py | Python interop | `import_dotted()`, `load_py_file()`, `resolve_py_import()` |
+| text_engine.py | Dynamic fonts | `load_font()`, `find_local_font()`, `fetch_google_font()` |
 | engine.py | Video composition | `Compositor`, `_apply_fx_stack()`, `_split_fx()` |
 | vfx.py | Visual effects | `apply_glow()`, `apply_blur()`, `chromatic_aberration()` |
 | shapes.py | Shape rendering | `draw_rect()`, `draw_circle()`, `draw_path()` |
@@ -410,8 +440,8 @@ Blend modes are special: they don't modify the layer image, but instead control 
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-10-10  
+**Document Version:** 1.1  
+**Last Updated:** 2026-10-11  
 **Maintainer:** Adit Malik  
 **Status:** Active Development
 
