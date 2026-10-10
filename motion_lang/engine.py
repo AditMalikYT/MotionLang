@@ -62,12 +62,23 @@ def _static_resize(clip, scale=None, size=None):
 
 def _dynamic_resize(clip, scale_fn):
     if _MPV2:
-        safe_scale_fn = lambda t: max(0.01, float(scale_fn(t)))
-        return clip.with_effects([_Resize(safe_scale_fn)])
-    # moviepy 1.x: resize(fn) zeroes clip masks (the image-only fun is
-    # applied to 0..1 mask floats, truncating them to uint8 0), which makes
-    # animated clips vanish in composites. Transform image and mask each
-    # with a range-correct fun instead.
+        w, h = clip.size if clip.size and clip.size[0] > 0 else (100, 100)
+        def safe_resize_fn(t):
+            try:
+                res = scale_fn(t)
+            except Exception:
+                res = 1.0
+            if isinstance(res, (tuple, list)):
+                nw = max(1, int(round(res[0])))
+                nh = max(1, int(round(res[1])))
+            else:
+                s = max(0.01, float(res))
+                nw = max(1, int(round(w * s)))
+                nh = max(1, int(round(h * s)))
+            return (nw, nh)
+        return clip.resize(safe_resize_fn)
+
+    # moviepy 1.x fallback:
     w, h = clip.size
     def _wh(base_w, base_h, s):
         return (max(1, int(round(base_w * s))), max(1, int(round(base_h * s))))
