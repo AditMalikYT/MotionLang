@@ -62,6 +62,20 @@ rng = a -> b
     assert isinstance(r, Range) and r.start == 14 and r.end == 20
 
 
+def test_division_and_trailing_comments():
+    src = (
+        "a = 10 / 4 // quartered\n"
+        "b = 10/2 // halved\n"
+        "c = 7 / 2 // trailing comment with // slashes // inside\n"
+        "// a full-line comment\n"
+        "vari = 1 // this commit is not working\n"
+    )
+    assert _val(src, "a") == 2.5
+    assert _val(src, "b") == 5.0
+    assert _val(src, "c") == 3.5
+    assert _val(src, "vari") == 1
+
+
 def test_functions_and_defaults():
     src = """
 fn double(x):

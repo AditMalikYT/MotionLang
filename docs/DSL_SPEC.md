@@ -28,7 +28,8 @@ still fully supported; the compiler auto-detects which one a file uses.
 
 - **Indentation** defines blocks (4 spaces recommended; tabs = 4 spaces).
   A block opens after a `:` at the end of a line.
-- **Comments** start with `//` and run to end of line.
+- **Comments** start with `//` and run to end of line — including trailing
+  comments (`vari = 1 // note`). Single `/` remains the division operator.
 - **Statements** are newline-terminated; no semicolons.
 - **Identifiers**: `[A-Za-z_][A-Za-z0-9_]*`.
 - **Strings**: double-quoted, standard escapes (`"he said \"hi\""`).
@@ -296,7 +297,7 @@ audio:
 
 | Call | Returns | Notes |
 | --- | --- | --- |
-| `shape(type, **opts)` | image | `type` ∈ `rect`, `circle`, `polygon`, `star`, `path`; opts: `width`, `height`, `radius` (stars also accept `outer_radius` + `inner_radius`, `points`), `color`/`fill` (solid hex or `gradient(linear\|radial, c1, c2[, angle])`), `stroke_color`, `stroke_width`, `points`, `svg`/`path` (for `path`), … |
+| `shape(type, **opts)` | image | `type` ∈ `rect`, `circle`, `polygon`, `star`, `path`, `line`; opts: `width`, `height`, `radius` (stars also accept `outer_radius` + `inner_radius`, `points`), `color`/`fill` (solid hex or `gradient(linear\|radial, c1, c2[, angle])`), `stroke_color`, `stroke_width`, `points`, `svg`/`path` (for `path`), `x1`/`y1`/`x2`/`y2` + `width` = thickness (for `line`), … |
 | `text(str, **opts)` | text | see text options below |
 | `file(path)` | image | local image, loaded relative to the script (falls back to the working dir) |
 | `wiki(query)` / `web(query)` | image | local match first (`assets/<query>.*`), then web search |

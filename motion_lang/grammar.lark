@@ -123,8 +123,11 @@ NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
 %import common.ESCAPED_STRING
 %import common.SIGNED_NUMBER -> NUMBER
 %import common.WS_INLINE
-%import common.CPP_COMMENT
 %ignore WS_INLINE
-%ignore CPP_COMMENT
+// `//` line comments. Priority 6 beats SLASH.5 so a trailing comment
+// (`x = 1 // note`) lexes as a comment, not division. Single `/` with no
+// second slash still lexes as SLASH, so `a / b` keeps working.
+COMMENT.6: /\/\/[^\n]*/
+%ignore COMMENT
 _NL: /(\r?\n[\t ]*)+/
 %declare _INDENT _DEDENT

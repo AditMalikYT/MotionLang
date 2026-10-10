@@ -142,6 +142,31 @@ def test_shape_stroke_and_star():
     assert corners[0, 0, :3].tolist() == [255, 255, 255]
 
 
+def test_line_shape():
+    line = generate_shape("line", x1=220, y1=560, x2=1700, y2=560,
+                          color="#27405F", width=3)
+    assert line.size == (1481, 3)
+    a = np.array(line)
+    assert a[1, 500, :3].tolist() == [0x27, 0x40, 0x5F]
+    assert int((a[:, :, 3] > 0).sum()) > 1000
+    vert = generate_shape("line", x1=5, y1=5, x2=5, y2=100,
+                          color="#FFFFFF", width=2)
+    assert vert.size == (2, 96)
+    dot = generate_shape("line", x1=9, y1=9, x2=9, y2=9,
+                         color="#FF0000", width=4)
+    assert dot.size == (4, 4)
+    assert np.array(dot)[2, 2, 0] > 200
+
+
+def test_opencv_channel_order():
+    # Raw OpenCV buffers are read back as RGBA: red must stay red.
+    red = generate_shape("star", points=5, radius=40, color="#FF0000")
+    assert np.array(red)[40, 40, :3].tolist() == [255, 0, 0]
+    green = generate_shape("polygon", points=[(0, 0), (30, 0), (15, 26)],
+                           color="#00FF00")
+    assert np.array(green)[10, 15, :3].tolist() == [0, 255, 0]
+
+
 def test_fx_stack_captures_blend_mode():
     base = Image.new("RGBA", (64, 64), (60, 60, 60, 255))
     comp = Compositor(64, 64, 10)

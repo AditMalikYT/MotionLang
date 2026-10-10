@@ -179,8 +179,10 @@ def _polygon_aa(size: Tuple[int, int], verts: Sequence[Tuple[float, float]],
     if _CV2:
         canvas = np.zeros((height, width, 4), np.uint8)
         pts = np.round(np.asarray(verts, np.float64)).astype(np.int32).reshape(-1, 1, 2)
-        bgr = (int(fill[2]), int(fill[1]), int(fill[0]), int(fill[3]))
-        cv2.fillPoly(canvas, [pts], bgr, lineType=cv2.LINE_AA)
+        # NOTE: raw channel order — the buffer is read back as RGBA below,
+        # so write (R, G, B, A), not OpenCV's BGR convention.
+        rgba = (int(fill[0]), int(fill[1]), int(fill[2]), int(fill[3]))
+        cv2.fillPoly(canvas, [pts], rgba, lineType=cv2.LINE_AA)
         return Image.fromarray(canvas, "RGBA")
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     ImageDraw.Draw(img).polygon([(float(x), float(y)) for x, y in verts], fill=fill)
@@ -195,8 +197,8 @@ def _stroke_poly(img: Image.Image, verts: Sequence[Tuple[float, float]],
     if _CV2:
         arr = np.array(img.convert("RGBA"), dtype=np.uint8)
         pts = np.round(np.asarray(verts, np.float64)).astype(np.int32).reshape(-1, 1, 2)
-        bgr = (int(color[2]), int(color[1]), int(color[0]), int(color[3]))
-        cv2.polylines(arr, [pts], True, bgr, thickness=int(width),
+        rgba = (int(color[0]), int(color[1]), int(color[2]), int(color[3]))
+        cv2.polylines(arr, [pts], True, rgba, thickness=int(width),
                       lineType=cv2.LINE_AA)
         img.paste(Image.fromarray(arr, "RGBA"), (0, 0))
         return
@@ -293,6 +295,40 @@ def draw_polygon(points: List[Tuple[float, float]], color: str,
     adjusted = [(x - min_x, y - min_y) for x, y in points]
     return _paint_shape((width, height), adjusted, color, gradient, stroke_color,
                         stroke_width, shape_order="polygon")
+
+
+def draw_line(x1: float = 0, y1: float = 0, x2: float = 0, y2: float = 0,
+              color: str = "#FFFFFF", width: int = 1) -> Image.Image:
+    """Generate an anti-aliased line segment as a transparent RGBA image.
+
+    The canvas is the segment's bounding box, grown so the ``width``-thick
+    stroke always fits: a horizontal line gets ``height == width``, a point
+    degrades to a filled dot. Render it at ``pos=(min(x1, x2), min(y1, y2))``
+    to place the segment at absolute coordinates.
+    """
+    thickness = max(1, int(width))
+    fx1, fy1, fx2, fy2 = float(x1), float(y1), float(x2), float(y2)
+    min_x, max_x = min(fx1, fx2), max(fx1, fx2)
+    min_y, max_y = min(fy1, fy2), max(fy1, fy2)
+    cw = max(int(round(max_x - min_x)) + 1, thickness)
+    ch = max(int(round(max_y - min_y)) + 1, thickness)
+    ox = (cw - 1 - (max_x - min_x)) / 2.0
+    oy = (ch - 1 - (max_y - min_y)) / 2.0
+    p1 = (fx1 - min_x + ox, fy1 - min_y + oy)
+    p2 = (fx2 - min_x + ox, fy2 - min_y + oy)
+    rgba = _hex_to_rgba(color)
+    if _CV2:
+        canvas = np.zeros((ch, cw, 4), np.uint8)
+        # Raw channel order: read back as RGBA below, so write (R, G, B, A).
+        rgba8 = (int(rgba[0]), int(rgba[1]), int(rgba[2]), int(rgba[3]))
+        cv2.line(canvas,
+                 (int(round(p1[0])), int(round(p1[1]))),
+                 (int(round(p2[0])), int(round(p2[1]))),
+                 rgba8, thickness=thickness, lineType=cv2.LINE_AA)
+        return Image.fromarray(canvas, "RGBA")
+    img = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    ImageDraw.Draw(img).line([p1, p2], fill=rgba, width=thickness)
+    return img
 
 
 def star_vertices(points: int = 5, radius: int = 100,
@@ -638,7 +674,8 @@ def _slug(v) -> Any:
 def generate_shape(shape_type: str, **kwargs) -> Image.Image:
     """Generate a shape from a type specification.
 
-    Supported types: ``rect``, ``circle``, ``polygon``, ``star``, ``path``.
+    Supported types: ``rect``, ``circle``, ``polygon``, ``star``, ``path``,
+    ``line`` (``x1``/``y1``/``x2``/``y2`` endpoints, ``width`` = thickness).
 
     Paint options:
         * ``color`` / ``fill``: solid hex colour, or a
@@ -688,6 +725,14 @@ def generate_shape(shape_type: str, **kwargs) -> Image.Image:
             raise ValueError("Polygon requires 'points' list of (x, y) tuples.")
         return draw_polygon(points, color, stroke_color=stroke_color,
                             stroke_width=stroke_width, gradient=gradient)
+
+    if shape_type in ("line", "segment"):
+        # `width` is the stroke thickness here (not a dimension).
+        thickness = kwargs.get("width", stroke_width or 1)
+        return draw_line(float(kwargs.get("x1", 0)), float(kwargs.get("y1", 0)),
+                         float(kwargs.get("x2", kwargs.get("x1", 0))),
+                         float(kwargs.get("y2", kwargs.get("y1", 0))),
+                         color=color, width=thickness)
 
     if shape_type == "star":
         radius = kwargs.get("outer_radius", kwargs.get("radius"))
