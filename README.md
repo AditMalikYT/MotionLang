@@ -37,19 +37,14 @@ scene:
 ### Quick Install
 
 ```bash
-# Using the installation script (recommended)
-chmod +x install.sh && ./install.sh
-
-# Or manually:
-python -m venv .venv && . .venv/bin/activate
-pip install -e .
+curl -fsSL https://raw.githubusercontent.com/AditMalikYT/MotionLang/main/install.sh | bash
 ```
 
 ### Uninstall
 
 ```bash
 # Remove virtual environment and dependencies
-./uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/AditMalikYT/MotionLang/main/uninstall.sh | bash
 ```
 
 ## Usage
