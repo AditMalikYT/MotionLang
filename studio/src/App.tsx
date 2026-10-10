@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import { Timeline } from "./Timeline";
+import { resolveLayer } from "./animate";
 import type { Composition, Fx, Layer } from "./types";
 import { EMPTY_COMPOSITION } from "./types";
 
@@ -45,6 +46,113 @@ function download(name: string, text: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Approximate unscaled canvas size of a layer for hit-testing. */
+function layerSize(layer: Layer): [number, number] {
+  if (layer.kind === "text") {
+    const fs = layer.style?.fontSize || 48;
+    const len = (layer.text || "").length || 1;
+    return [len * fs * 0.62, fs * 1.3];
+  }
+  return [layer.width || 240, layer.height || 135];
+}
+
+/**
+ * Transparent overlay above the Player video: click a layer to select it,
+ * drag to reposition it. Coordinates map from the letterboxed video box
+ * back to composition pixels; keyframed `posEnd` shifts by the same delta
+ * so animations are preserved.
+ */
+const CanvasDragLayer: React.FC<{
+  comp: Composition;
+  frame: number;
+  onSelect: (id: string) => void;
+  onMove: (id: string, pos: [number, number], posEnd: [number, number] | undefined) => void;
+}> = ({ comp, frame, onSelect, onMove }) => {
+  const t = frame / comp.meta.fps;
+  const [dragId, setDragId] = useState<string | null>(null);
+  const drag = useRef<null | {
+    id: string;
+    startX: number;
+    startY: number;
+    origPos: [number, number];
+    origPosEnd: [number, number] | undefined;
+  }>(null);
+
+  // Video box inside the overlay (aspect-fit, centered).
+  const videoBox = (el: HTMLDivElement) => {
+    const rect = el.getBoundingClientRect();
+    const aspect = comp.meta.width / comp.meta.height;
+    let vw = rect.width;
+    let vh = vw / aspect;
+    if (vh > rect.height) {
+      vh = rect.height;
+      vw = vh * aspect;
+    }
+    return { rect, ox: rect.left + (rect.width - vw) / 2, oy: rect.top + (rect.height - vh) / 2, vw };
+  };
+
+  const hitTest = (cx: number, cy: number): Layer | null => {
+    const layers = [...comp.layers].sort((a, b) => b.z - a.z);
+    for (const layer of layers) {
+      const r = resolveLayer(layer, t);
+      if (!r.visible) continue;
+      const [w, h] = layerSize(layer);
+      if (cx >= r.x && cx <= r.x + w * r.scale && cy >= r.y && cy <= r.y + h * r.scale) {
+        return layer;
+      }
+    }
+    return null;
+  };
+
+  return (
+    <div
+      className={"drag-overlay" + (dragId ? " dragging" : "")}
+      onPointerDown={(e) => {
+        const el = e.currentTarget as HTMLDivElement;
+        const { ox, oy, vw } = videoBox(el);
+        const k = comp.meta.width / vw;
+        const hit = hitTest((e.clientX - ox) * k, (e.clientY - oy) * k);
+        if (!hit || !hit.pos) return;
+        onSelect(hit.id);
+        el.setPointerCapture(e.pointerId);
+        drag.current = {
+          id: hit.id,
+          startX: e.clientX,
+          startY: e.clientY,
+          origPos: [...hit.pos] as [number, number],
+          origPosEnd: hit.posEnd ? ([...hit.posEnd] as [number, number]) : undefined,
+        };
+        setDragId(hit.id);
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        const el = e.currentTarget as HTMLDivElement;
+        const { vw } = videoBox(el);
+        const k = comp.meta.width / vw;
+        const dx = (e.clientX - d.startX) * k;
+        const dy = (e.clientY - d.startY) * k;
+        const pos: [number, number] = [
+          Math.round(d.origPos[0] + dx),
+          Math.round(d.origPos[1] + dy),
+        ];
+        const posEnd = d.origPosEnd
+          ? ([Math.round(d.origPosEnd[0] + dx), Math.round(d.origPosEnd[1] + dy)] as [number, number])
+          : undefined;
+        onMove(d.id, pos, posEnd);
+      }}
+      onPointerUp={() => {
+        drag.current = null;
+        setDragId(null);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+        setDragId(null);
+      }}
+    />
+  );
+};
 
 const SAMPLE: Composition = {
   meta: { title: "welcome", width: 1280, height: 720, fps: 30, duration: 4 },
@@ -91,6 +199,14 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [frame, setFrame] = useState(0);
   const [status, setStatus] = useState("Loading composition…");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [renderJob, setRenderJob] = useState<{
+    id: string;
+    status: string;
+    output?: string | null;
+    error?: string | null;
+  } | null>(null);
+  const [renderBusy, setRenderBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Track the playhead via the Player's frameupdate event.
@@ -101,6 +217,73 @@ export default function App() {
     p.addEventListener("frameupdate", onFrame);
     return () => p.removeEventListener("frameupdate", onFrame);
   }, []);
+
+  // Keep the play/pause toggle in sync with the Player itself.
+  useEffect(() => {
+    const p: any = playerRef.current;
+    if (!p) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    p.addEventListener("play", onPlay);
+    p.addEventListener("pause", onPause);
+    return () => {
+      p.removeEventListener("play", onPlay);
+      p.removeEventListener("pause", onPause);
+    };
+  }, []);
+
+  // Spacebar toggles playback (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      const p = playerRef.current;
+      if (!p) return;
+      if (p.isPlaying()) {
+        p.pause();
+      } else {
+        p.play();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Poll a server-side render job until it finishes.
+  useEffect(() => {
+    if (!renderJob || (renderJob.status !== "queued" && renderJob.status !== "running")) {
+      return;
+    }
+    const id = renderJob.id;
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/render/${id}`);
+        if (!r.ok) return;
+        const data = await r.json();
+        setRenderJob((j) => (j && j.id === id ? { ...j, ...data } : j));
+        if (data.status === "done" || data.status === "error") {
+          clearInterval(timer);
+          setRenderBusy(false);
+        }
+      } catch {
+        /* keep polling; dev server may be restarting */
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [renderJob?.id, renderJob?.status]);
+
+  // Surface finished render jobs in the status bar.
+  useEffect(() => {
+    if (renderJob?.status === "done") {
+      setStatus(`Render complete -> ${renderJob.output || "studio/out/studio.mp4"}`);
+    } else if (renderJob?.status === "error") {
+      setStatus(`Render failed: ${renderJob.error || "unknown error"}`);
+    }
+  }, [renderJob?.status, renderJob?.output, renderJob?.error]);
 
   // Load the compiler-generated composition.json from the public folder.
   useEffect(() => {
@@ -187,6 +370,55 @@ export default function App() {
 
   const setFx = (layer: Layer, fx: Fx[]) => update(layer.id, { fx });
 
+  const togglePlay = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    if (p.isPlaying()) {
+      p.pause();
+    } else {
+      p.play();
+    }
+  }, []);
+
+  // Push the edited timeline to disk (public/composition.json).
+  const syncToDisk = useCallback(async () => {
+    setStatus("Syncing timeline to disk…");
+    try {
+      const r = await fetch("/api/composition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ composition: comp }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setStatus(`Synced ${data.layers} layer(s) -> studio/public/composition.json`);
+    } catch (err: any) {
+      setStatus(`Sync failed: ${err?.message || err} (is this running under vite dev?)`);
+    }
+  }, [comp]);
+
+  // Sync, then trigger a server-side Remotion render to .mp4.
+  const renderVideo = useCallback(async () => {
+    if (renderBusy) return;
+    setRenderBusy(true);
+    setRenderJob(null);
+    setStatus("Starting server-side render…");
+    try {
+      const r = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ composition: comp }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setRenderJob({ id: data.jobId, status: data.status });
+      setStatus(`Render ${data.jobId} started — recompiling timeline to MP4…`);
+    } catch (err: any) {
+      setRenderBusy(false);
+      setStatus(`Render failed to start: ${err?.message || err}`);
+    }
+  }, [comp, renderBusy]);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -201,7 +433,21 @@ export default function App() {
         />
         <div className="spacer" />
         <span className="status">{status}</span>
+        <button onClick={togglePlay} title="Play / Pause (Space)">
+          {isPlaying ? "⏸ Pause" : "▶ Play"}
+        </button>
         <button onClick={addText}>+ Text</button>
+        <button onClick={syncToDisk} title="Save the edited timeline to studio/public/composition.json">
+          Sync
+        </button>
+        <button className="render-btn" onClick={renderVideo} disabled={renderBusy} title="Sync the timeline and render it to MP4 on the server">
+          {renderBusy ? "⏳ Rendering…" : "🚀 Render Video"}
+        </button>
+        {renderJob?.status === "done" && renderJob.output && (
+          <a className="dl-link" href={`/api/download/${renderJob.id}`}>
+            ⬇ MP4
+          </a>
+        )}
         <button onClick={() => download(`${comp.meta.title || "composition"}.json`, JSON.stringify(comp, null, 2))}>
           Export JSON
         </button>
@@ -288,6 +534,14 @@ export default function App() {
               clickToPlay
               doubleClickToFullscreen
               acknowledgeRemotionLicense
+            />
+            <CanvasDragLayer
+              comp={comp}
+              frame={frame}
+              onSelect={(id) => setSelectedId(id)}
+              onMove={(id, pos, posEnd) =>
+                update(id, posEnd ? { pos, posEnd } : { pos })
+              }
             />
           </div>
           <TimelineStrip

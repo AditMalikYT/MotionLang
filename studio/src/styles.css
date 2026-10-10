@@ -113,6 +113,48 @@ button.danger:hover {
   color: var(--danger);
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+button.render-btn {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+button.render-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #06121f;
+}
+
+a.dl-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.dl-link:hover {
+  text-decoration: underline;
+}
+
+/* Transparent drag surface above the Player video (below the controls). */
+.player-wrap {
+  position: relative;
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 5;
+  touch-action: none;
+}
+
+.drag-overlay.dragging {
+  cursor: grabbing;
+}
+
 .main {
   flex: 1;
   display: grid;
