@@ -31,15 +31,7 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# Confirm uninstallation
-read -p "Are you sure you want to uninstall Motion Language? This will remove the virtual environment and studio node_modules. [y/N] " -n 1 -r
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo ""
-    print_warning "Uninstallation cancelled."
-    exit 0
-fi
-
-echo ""
+print_status "Starting Motion Language uninstallation cleanup..."
 
 # Step 1: Remove virtual environment
 print_status "Removing Python virtual environment..."
@@ -90,12 +82,4 @@ rm -f /tmp/test_*.mp4 /tmp/test_*.hmg /tmp/modern_demo*.mp4 2>/dev/null || true
 # Final message
 echo ""
 print_success "Motion Language uninstallation complete!"
-print_status ""
-print_status "The following were removed:"
-print_status "  - .venv/ (Python virtual environment)"
-print_status "  - studio/node_modules/ (if existed)"
-print_status "  - studio/package-lock.json (if existed)"
-print_status "  - output/ (generated files)"
-print_status "  - .cache/ (cache files)"
-print_status ""
-print_status "Note: Source code and examples remain intact."
+print_status "The local workspace has been cleaned up."
