@@ -1,0 +1,25 @@
+// Reusable UI components for the modern Motion Language.
+// Demonstrates module imports (`import GlowCard, GlassTitle from ...`) and
+// `export` of functions / classes across .hmg files.
+
+export GlowCard
+export GlassTitle
+
+// A rounded, softly-glowing info card built from primitives.
+fn GlowCard(title, subtitle, x, y, w=360, h=180):
+    panel = shape("rect", width=w, height=h, color="#141420", radius=16)
+    heading = text(title, font="Helvetica", size=28, color="#FFFFFF")
+    caption = text(subtitle, font="Helvetica", size=16, color="#9BE7FF")
+    return layer(z=4):
+        render(panel, pos=(x, y), fx=[glow(color="#00E5FF", radius=20, intensity=1.1)])
+        render(heading, pos=(x + 24, y + 40))
+        render(caption, pos=(x + 24, y + 96))
+
+// A large glassmorphism title.
+class GlassTitle:
+    fn init(self, label, size=64):
+        self.image = text(label, font="Helvetica", size=size, color="#FFFFFF")
+
+    fn build(self, pos=(400, 120)):
+        return layer(z=6):
+            render(self.image, pos=pos, fx=[glow(color="#00E5FF", radius=24, intensity=1.4)])

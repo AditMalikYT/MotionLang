@@ -1,0 +1,26 @@
+/* Motion Language theme: class-based layout / color / FX targeting.
+   Selectors: .class and #id. Explicit render() attrs always override. */
+
+/* Frosted card behind the hero: layout + rounded box + soft shadow. */
+.glass-card {
+    width: 500px;
+    height: 300px;
+    background-color: #282C34;
+    border-radius: 20px;
+    box-shadow: 5px 15px 25px #000000;
+    opacity: 0.95;
+}
+
+/* Avatar treatment: circular crop + cyan glow + slight transparency. */
+.glowing-avatar {
+    border-radius: 110px;
+    glow: #00E5FF 1.5;
+    opacity: 0.9;
+}
+
+/* Per-instance motion polish: easing + transitions + grade. */
+#main-hero {
+    easing: ease-in-out;
+    transition-in: fade(0.5s);
+    filter: brightness(1.1) contrast(1.05);
+}

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Motion Language runtime artifacts
+.cache/
+output/
+
+# Remotion / Vite studio
+studio/node_modules/
+studio/dist/
+studio/out/
+
+# Editor / OS
+.DS_Store
+.vscode/settings.json

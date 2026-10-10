@@ -1,0 +1,60 @@
+// Language Configuration
+config:
+    resolution = 1280x720
+    fps = 30
+    mode = "render"
+
+// Module Import
+import GlowCard, GlassTitle from "components/ui.hmg"
+
+// Global Variables & Operators
+base_duration = 5
+card_scale = 0.8 + 0.1
+
+// Custom Function Definition
+fn create_badge(text_val, x, y):
+    bg = shape("rect", width=200, height=60, color="#1e1e2e", radius=12)
+    label = text(text_val, font="Helvetica", size=24, color="#FFFFFF")
+    return layer(z=3):
+        render(bg, pos=(x, y))
+        render(label, pos=(x + 20, y + 15))
+
+// Class Definition (OOP)
+class HeroWidget:
+    fn init(self, title_text, asset_query):
+        self.title = text(title_text, size=48, color="#00E5FF")
+        self.avatar = wiki(asset_query)
+
+    fn build(self, start_t):
+        return layer(z=2):
+            render(self.avatar, time=[start_t, start_t + 4], pos=(450, 200), scale=0.6)
+            render(self.title, time=[start_t + 0.5, start_t + 4], pos=(400, 450), fx=[glow(color="#00E5FF")])
+
+// Instantiation & Usage
+hero = HeroWidget("EAGLE VISION", "eagle")
+
+// Composition Timeline
+scene:
+    // Background loop
+    repeat 3 times as i:
+        bg = shape("rect", width=1280, height=720, color="#0a0a10")
+        layer(z=1):
+            render(bg, time=[i * 2, (i + 1) * 2])
+
+    // Conditional Layer Logic
+    show_hero = true
+    if show_hero == true:
+        hero.build(start_t=0.5)
+    else:
+        layer(z=2):
+            render(shape("circle", radius=100, color="#FF0055"), time=[0, 5], pos=(540, 260))
+
+    // Functional Component Loop
+    items = ["FAST", "CLEAN", "MOTIONS"]
+    for idx, item in items:
+        create_badge(item, x=100 + (idx * 220), y=600)
+
+audio:
+    play(audio("assets/bg_music.mp3"), start=0, volume=0.3)
+    for t in [1.0, 3.0, 5.0]:
+        play(audio("assets/swoosh.wav"), start=t, volume=0.8)
