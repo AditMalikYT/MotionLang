@@ -1,0 +1,130 @@
+// Motion Language grammar (modern indentation-based DSL).
+//
+// Loaded by motion_lang/lang.py. Lark LALR + custom Indenter postlexer.
+// Notes:
+//  - `render(...)`, `shape(...)`, `text(...)`, fx names, ... are ordinary
+//    builtin calls, so the language itself stays tiny.
+//  - `chain` covers attribute paths (`self.title`), single method calls
+//    (`hero.build(...)`), path-then-call (`os.path.join(...)`) and full
+//    chains (`v.cut(..).speed(..)`, `video(..).cut(..)`). A trailer with a
+//    `call_args` child is invoked, otherwise it is an attribute read.
+//  - `TIME` ($t / $frame) marks per-frame dynamic expressions in render()
+//    properties; anywhere else it is a runtime error with a helpful message.
+//  - `transition(...)` is a statement wiring two render() specs together.
+
+start: (_NL | statement)*
+
+?statement: config_block
+          | import_stmt
+          | export_stmt
+          | fn_def
+          | class_def
+          | scene_block
+          | audio_block
+          | if_stmt
+          | for_stmt
+          | repeat_stmt
+          | layer_block
+          | transition_stmt
+          | return_stmt
+          | assign_stmt
+          | expr_stmt
+
+config_block: "config" ":" _NL _INDENT (_NL | config_prop)+ _DEDENT
+config_prop: NAME "=" config_value _NL
+?config_value: RESOLUTION -> res_value
+             | expr       -> expr_value
+
+import_stmt: "import" imp_list ["from" ESCAPED_STRING] _NL
+imp_list: imp_item ("," imp_item)*
+imp_item: dotted ["as" NAME]
+dotted: NAME ("." NAME)*
+export_stmt: "export" NAME _NL
+
+fn_def: "fn" NAME "(" [params] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+params: param ("," param)*
+param: NAME ["=" expr]
+
+class_def: "class" NAME [ "(" NAME ")" ] ":" _NL _INDENT (_NL | statement)+ _DEDENT
+
+scene_block: "scene" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+audio_block: "audio" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+
+layer_block: LAYER "(" [args] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+
+transition_stmt: "transition" "(" [args] ")" _NL
+
+if_stmt: "if" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT elif_clause* [else_clause]
+elif_clause: "elif" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
+           | "else" "if" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
+else_clause: "else" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+
+for_stmt: "for" target "in" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
+target: NAME ("," NAME)*
+
+repeat_stmt: "repeat" expr "times" ["as" NAME] ":" _NL _INDENT (_NL | statement)+ _DEDENT
+
+return_stmt: "return" layer_block -> return_layer
+           | "return" expr _NL      -> return_expr
+           | "return" _NL           -> return_none
+
+assign_stmt: expr "=" expr _NL
+expr_stmt: expr _NL
+
+?expr: arrow_expr
+?arrow_expr: or_expr (ARROW or_expr)*
+?or_expr: and_expr ("or" and_expr)*
+?and_expr: not_expr ("and" not_expr)*
+?not_expr: "not" not_expr -> not_op
+         | comparison
+?comparison: arith (COMP_OP arith)*
+?arith: term ((PLUS|MINUS) term)*
+?term: unary ((STAR|SLASH|PERCENT) unary)*
+?unary: MINUS unary -> neg
+      | atom
+?atom: NUMBER
+     | ESCAPED_STRING
+     | "true"  -> true_lit
+     | "false" -> false_lit
+     | TIME                              -> time_var
+     | NAME "(" [args] ")"                -> call
+     | NAME "(" [args] ")" ("." NAME [call_args])+  -> chain
+     | NAME ("." NAME [call_args])+       -> chain
+     | NAME "[" expr "]"                  -> index
+     | NAME                               -> var
+     | "(" expr ")"                       -> paren
+     | tuple_lit
+     | list_lit
+     | AUDIO "(" [args] ")"               -> audio_call
+
+tuple_lit: "(" expr "," expr ("," expr)* ")"
+list_lit: "[" [expr ("," expr)*] "]"
+
+// A call suffix that is always present in the tree (even when empty), so
+// `a.b()` (call) and `a.b` (attribute) stay distinguishable.
+call_args: "(" [args] ")"
+
+args: arg ("," arg)*
+arg: NAME "=" expr -> kwarg
+   | expr          -> posarg
+
+ARROW.6: "->"
+PLUS.5: "+"
+MINUS.5: "-"
+STAR.5: "*"
+SLASH.5: "/"
+PERCENT.5: "%"
+COMP_OP.5: "==" | "!=" | ">=" | "<=" | ">" | "<"
+TIME.5: /\$[a-zA-Z_][a-zA-Z0-9_]*/
+RESOLUTION.5: /\d+[xX]\d+/
+AUDIO.5: "audio"
+LAYER.5: "layer"
+NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+%import common.ESCAPED_STRING
+%import common.SIGNED_NUMBER -> NUMBER
+%import common.WS_INLINE
+%import common.CPP_COMMENT
+%ignore WS_INLINE
+%ignore CPP_COMMENT
+_NL: /(\r?\n[\t ]*)+/
+%declare _INDENT _DEDENT

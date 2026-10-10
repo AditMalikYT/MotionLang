@@ -37,115 +37,19 @@ except Exception:  # pragma: no cover
 # Grammar
 # ---------------------------------------------------------------------------
 
-DSL_GRAMMAR = r"""
-start: (_NL | statement)*
+def _grammar_path() -> str:
+    import os as _os
+    return _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                         "grammar.lark")
 
-?statement: config_block
-          | import_stmt
-          | export_stmt
-          | fn_def
-          | class_def
-          | scene_block
-          | audio_block
-          | if_stmt
-          | for_stmt
-          | repeat_stmt
-          | layer_block
-          | return_stmt
-          | assign_stmt
-          | expr_stmt
 
-config_block: "config" ":" _NL _INDENT (_NL | config_prop)+ _DEDENT
-config_prop: NAME "=" config_value _NL
-?config_value: RESOLUTION -> res_value
-             | expr       -> expr_value
+def _load_grammar() -> str:
+    with open(_grammar_path(), "r", encoding="utf-8") as _fh:
+        return _fh.read()
 
-import_stmt: "import" imp_list ["from" ESCAPED_STRING] _NL
-imp_list: imp_item ("," imp_item)*
-imp_item: dotted ["as" NAME]
-dotted: NAME ("." NAME)*
-export_stmt: "export" NAME _NL
 
-fn_def: "fn" NAME "(" [params] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
-params: param ("," param)*
-param: NAME ["=" expr]
-
-class_def: "class" NAME [ "(" NAME ")" ] ":" _NL _INDENT (_NL | statement)+ _DEDENT
-
-scene_block: "scene" ":" _NL _INDENT (_NL | statement)+ _DEDENT
-audio_block: "audio" ":" _NL _INDENT (_NL | statement)+ _DEDENT
-
-layer_block: LAYER "(" [args] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
-
-if_stmt: "if" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT elif_clause* [else_clause]
-elif_clause: "elif" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
-           | "else" "if" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
-else_clause: "else" ":" _NL _INDENT (_NL | statement)+ _DEDENT
-
-for_stmt: "for" target "in" expr ":" _NL _INDENT (_NL | statement)+ _DEDENT
-target: NAME ("," NAME)*
-
-repeat_stmt: "repeat" expr "times" ["as" NAME] ":" _NL _INDENT (_NL | statement)+ _DEDENT
-
-return_stmt: "return" layer_block -> return_layer
-           | "return" expr _NL      -> return_expr
-           | "return" _NL           -> return_none
-
-assign_stmt: expr "=" expr _NL
-expr_stmt: expr _NL
-
-?expr: arrow_expr
-?arrow_expr: or_expr (ARROW or_expr)*
-?or_expr: and_expr ("or" and_expr)*
-?and_expr: not_expr ("and" not_expr)*
-?not_expr: "not" not_expr -> not_op
-         | comparison
-?comparison: arith (COMP_OP arith)*
-?arith: term ((PLUS|MINUS) term)*
-?term: unary ((STAR|SLASH|PERCENT) unary)*
-?unary: MINUS unary -> neg
-      | atom
-?atom: NUMBER
-     | ESCAPED_STRING
-     | "true"  -> true_lit
-     | "false" -> false_lit
-     | NAME "(" [args] ")"                -> call
-     | NAME ("." NAME)+ "(" [args] ")"    -> method_call
-     | NAME ("." NAME)+                  -> attr
-     | NAME "[" expr "]"                  -> index
-     | NAME                               -> var
-     | "(" expr ")"                       -> paren
-     | tuple_lit
-     | list_lit
-     | AUDIO "(" [args] ")"               -> audio_call
-
-tuple_lit: "(" expr "," expr ("," expr)* ")"
-list_lit: "[" [expr ("," expr)*] "]"
-
-args: arg ("," arg)*
-arg: NAME "=" expr -> kwarg
-   | expr          -> posarg
-
-ARROW.6: "->"
-PLUS.5: "+"
-MINUS.5: "-"
-STAR.5: "*"
-SLASH.5: "/"
-PERCENT.5: "%"
-COMP_OP.5: "==" | "!=" | ">=" | "<=" | ">" | "<"
-RESOLUTION.5: /\d+[xX]\d+/
-AUDIO.5: "audio"
-LAYER.5: "layer"
-NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
-%import common.ESCAPED_STRING
-%import common.SIGNED_NUMBER -> NUMBER
-%import common.WS_INLINE
-%import common.CPP_COMMENT
-%ignore WS_INLINE
-%ignore CPP_COMMENT
-_NL: /(\r?\n[\t ]*)+/
-%declare _INDENT _DEDENT
-"""
+# Inline grammar source (kept importable; canonical source is grammar.lark).
+DSL_GRAMMAR = _load_grammar()
 
 
 class _Indenter(Indenter):
@@ -186,9 +90,12 @@ def _format_lang_error(exc: UnexpectedInput, source: str) -> str:
             hint = ""
     return (f"[DSL Syntax Error] line {line}, column {col}\n{ctx}{hint}\n"
             "Modern syntax: `config:`, `import A, B from \"file.hmg\"`, "
-            "`fn name(args):`, `class Name:`, `scene:`, `audio:`, "
+            "`import math` / `import numpy as np`, `fn name(args):`, "
+            "`class Name:`, `scene:`, `audio:`, "
             "`layer(z=1):`, `for x in items:`, `repeat 3 times as i:`, "
-            "`if cond:` / `else if` / `else`.")
+            "`if cond:` / `else if` / `else`, "
+            "`transition(from=, to=, type=, duration=)`, `$t`/`$frame` in "
+            "render() properties.")
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +112,67 @@ class Asset:
 
     def __repr__(self):
         return f"<{self.kind} asset>"
+
+
+class VideoAsset:
+    """A video file plus accumulated editorial ops (cut + speed + default pos).
+
+    Returned by ``video(...)`` / ``import_video(...)``. Chainable methods
+    (``.cut()`` / ``.trim()`` / ``.subclip()`` / ``.speed()`` / ``.pos()``)
+    each return a *new* VideoAsset, so intermediate grades can be reused.
+    ``kind`` mirrors :class:`Asset` so export/render dispatch keeps working.
+    """
+    kind = "video"
+
+    def __init__(self, path: str, source_start=None, source_end=None,
+                 speed=None, default_pos=None):
+        self.path = path
+        self.source_start = source_start
+        self.source_end = source_end
+        self.speed_factor = speed
+        self.default_pos = default_pos
+
+    def _clone(self, **over):
+        kw = dict(path=self.path, source_start=self.source_start,
+                  source_end=self.source_end, speed=self.speed_factor,
+                  default_pos=self.default_pos)
+        kw.update(over)
+        return VideoAsset(**kw)
+
+    def cut(self, start=None, end=None, duration=None):
+        if duration is not None and end is None:
+            s = self.source_start if start is None else float(start)
+            end = s + float(duration)
+        return self._clone(source_start=start, source_end=end)
+
+    def trim(self, start=None, end=None, duration=None):
+        return self.cut(start=start, end=end, duration=duration)
+
+    def subclip(self, start=None, end=None):
+        return self.cut(start=start, end=end)
+
+    def speed(self, factor=1.0):
+        return self._clone(speed=float(factor))
+
+    def pos(self, x, y=None):
+        if y is None and isinstance(x, (list, tuple)):
+            x, y = x[0], x[1]
+        return self._clone(default_pos=(float(x), float(y)))
+
+    def split(self, intervals):
+        from motion_lang.video_engine import normalise_interval
+        return [self.cut(start=s, end=e)
+                for s, e in (normalise_interval(iv) for iv in intervals)]
+
+    @property
+    def ops_key(self) -> str:
+        from motion_lang.video_engine import cache_key
+        return cache_key(self.path, self.source_start, self.source_end,
+                         self.speed_factor)
+
+    def __repr__(self):
+        return (f"<video {self.path} "
+                f"[{self.source_start}:{self.source_end} @{self.speed_factor}]>")
 
 
 class Layer:
@@ -434,12 +402,15 @@ class Evaluator:
         # Recorded timeline (for the Remotion studio export).
         self.renders: List[Tuple[int, "RenderSpec"]] = []
         self.audio_specs: List[Dict[str, Any]] = []
+        # transition() statement records (from_spec, to_spec, kind, ...).
+        self.transitions: List[Dict[str, Any]] = []
 
     # -- orchestration ----------------------------------------------------
     def run(self, tree: Tree, env: Optional[Env] = None) -> Env:
         env = env or Env()
         for stmt in tree.children:
             self.exec_stmt(stmt, env)
+        self._reapply_transitions()
         return env
 
     def _ensure_compositor(self) -> Optional[Compositor]:
@@ -747,8 +718,12 @@ class Evaluator:
             raise LangRuntimeError("Invalid assignment target.")
         if target.data == "var":
             env.set(str(target.children[0]), value)
-        elif target.data == "attr":
-            parts = [str(c) for c in target.children]
+        elif target.data == "chain":
+            parts = []
+            for c in target.children:
+                if isinstance(c, Tree):
+                    raise LangRuntimeError("Cannot assign to a call.")
+                parts.append(str(c))
             obj = env.get(parts[0])
             for name in parts[1:-1]:
                 obj = self._get_attr(obj, name)
@@ -793,6 +768,21 @@ class Evaluator:
             self.renders.append((layer.z, spec))
             self._add_render(spec, layer.z)
 
+    def _reapply_transitions(self):
+        """Rebuild clips after transition() statements mutated specs.
+
+        Layer clips are committed the moment their ``layer:`` block executes,
+        but ``transition(from=, to=)`` statements run later and only stamp
+        ``transition_in/out`` on the specs. Replaying the recorded timeline
+        through the compositor applies them without duplicating records.
+        """
+        comp = self.compositor
+        if comp is None or not self.transitions:
+            return
+        comp.layers = []
+        for z, spec in self.renders:
+            self._add_render(spec, z)
+
     def _add_render(self, spec: RenderSpec, z: int):
         comp = self._ensure_compositor()
         if comp is None or spec.asset is None:
@@ -808,7 +798,13 @@ class Evaluator:
         if asset.kind == "image" and asset.data is not None:
             comp.add_image_layer(pil_image=asset.data, is_shape=asset.is_shape, **kw)
         elif asset.kind == "video":
-            comp.add_video_layer(video_path=asset.data, **kw)
+            if isinstance(asset, VideoAsset):
+                comp.add_video_layer(video_path=asset.path,
+                                     source_start=asset.source_start,
+                                     source_end=asset.source_end,
+                                     speed=asset.speed_factor, **kw)
+            else:
+                comp.add_video_layer(video_path=asset.data, **kw)
         elif asset.kind == "text":
             data = dict(asset.data)
             text = data.pop("text", "")
@@ -848,7 +844,23 @@ class Evaluator:
 
     # literals / leaves
     def _eval_var(self, node, env):
-        return env.get(str(node.children[0]))
+        name = str(node.children[0])
+        try:
+            return env.get(name)
+        except LangRuntimeError:
+            from motion_lang.math_engine import TIME_CONSTANTS
+            if name in TIME_CONSTANTS:
+                return TIME_CONSTANTS[name]
+            raise
+
+    def _eval_time_var(self, node, env):
+        name = str(node.children[0])
+        try:
+            return env.get(name)
+        except LangRuntimeError:
+            raise LangRuntimeError(
+                f"{name} is only available inside animated render() properties "
+                f"(pos, scale, opacity, ...), where it is evaluated per frame.")
 
     def _eval_paren(self, node, env):
         return self.eval(node.children[0], env)
@@ -969,13 +981,6 @@ class Evaluator:
         raise LangRuntimeError(f"Unknown operator '{op}'.")
 
     # calls / attributes
-    def _eval_attr(self, node, env):
-        parts = [str(c) for c in node.children]
-        obj = env.get(parts[0])
-        for name in parts[1:]:
-            obj = self._get_attr(obj, name)
-        return obj
-
     def _get_attr(self, obj, name):
         if isinstance(obj, Instance):
             if name in obj.attrs:
@@ -997,6 +1002,7 @@ class Evaluator:
         return obj[idx]
 
     def _eval_method_call(self, node, env):
+        # Legacy single-link shape (grammar now produces `chain` instead).
         names = [str(c) for c in node.children if isinstance(c, Token)]
         args_node = next((c for c in node.children
                           if isinstance(c, Tree) and c.data == "args"), None)
@@ -1004,18 +1010,84 @@ class Evaluator:
         for name in names[1:-1]:
             obj = self._get_attr(obj, name)
         pos, kw = self.eval_args(args_node, env)
-        method = self._get_attr(obj, names[-1])
+        return self._call_link(obj, names[-1], pos, kw)
+
+    def _eval_chain(self, node, env):
+        """Evaluate attribute/call chains left to right.
+
+        Three head shapes (a link with a ``call_args`` child is invoked,
+        otherwise it is an attribute read):
+
+        * ``a.b.c`` — ``[a, b, c]``; pure attribute path.
+        * ``a.b(..).c`` / ``os.path.join(..)`` — ``[a, b, call_args?, ...]``.
+        * ``video(..).cut(..)`` — ``[video, args, cut, call_args, ...]``;
+          the head is a call evaluated first.
+        """
+        children = node.children
+        if len(children) > 1 and isinstance(children[1], Tree) \
+                and children[1].data == "args":
+            head_pos, head_kw = self.eval_args(children[1], env)
+            obj = self._invoke(str(children[0]), head_pos, head_kw, env)
+            i = 2
+        else:
+            obj = env.get(str(children[0]))
+            i = 1
+        while i < len(children):
+            name = str(children[i])
+            i += 1
+            if i < len(children) and isinstance(children[i], Tree) \
+                    and children[i].data == "call_args":
+                inner = children[i].children
+                args_node = inner[0] if inner else None
+                i += 1
+                pos, kw = self.eval_args(args_node, env)
+                obj = self._call_link(obj, name, pos, kw)
+            else:
+                obj = self._get_attr(obj, name)
+        return obj
+
+    def _call_link(self, obj, name: str, pos, kw):
+        method = self._get_attr(obj, name)
         if isinstance(method, BoundMethod):
             return self.call_function(method.fn, [method.instance] + pos, kw)
         if callable(method):
             return method(*pos, **kw)
-        raise LangRuntimeError(f"'{names[-1]}' is not callable.")
+        raise LangRuntimeError(f"'{name}' is not callable.")
 
     def _eval_call(self, node, env):
         name = str(node.children[0])
         args_node = node.children[1] if len(node.children) > 1 else None
+        if name == "render":
+            return self._eval_render_call(args_node, env)
         pos, kw = self.eval_args(args_node, env)
         return self._invoke(name, pos, kw, env)
+
+    #: render() properties evaluated per frame when they mention $t/$frame.
+    _DYN_KEYS = frozenset({"pos", "pos_end", "scale", "scale_end",
+                           "opacity", "opacity_end"})
+
+    def _eval_render_call(self, args_node, env):
+        """Evaluate render() args, wrapping $t-bearing props in DynExpr."""
+        from motion_lang.math_engine import DynExpr, tree_has_time
+        pos, kw = [], {}
+        if args_node is None:
+            return self._invoke("render", pos, kw, env)
+        for a in args_node.children:
+            if isinstance(a, Tree) and a.data == "kwarg":
+                key = str(a.children[0])
+                if key in self._DYN_KEYS and tree_has_time(a.children[1]):
+                    kw[key] = DynExpr(a.children[1], self, env,
+                                     fps=self.config.get("fps", 30),
+                                     label=key)
+                else:
+                    kw[key] = self.eval(a.children[1], env)
+            elif isinstance(a, Tree) and a.data == "posarg":
+                # Positional args (the asset, time lists) must be static;
+                # a $t here raises the helpful time_var error.
+                pos.append(self.eval(a.children[0], env))
+            else:
+                pos.append(self.eval(a, env))
+        return self._invoke("render", pos, kw, env)
 
     def _eval_audio_call(self, node, env):
         args_node = next((c for c in node.children
@@ -1044,6 +1116,12 @@ class Evaluator:
         builtin = getattr(self, f"_builtin_{name}", None)
         if builtin is not None:
             return builtin(pos, kw)
+        from motion_lang.math_engine import MATH_FUNCS
+        if name in MATH_FUNCS:
+            try:
+                return MATH_FUNCS[name](*pos, **kw)
+            except TypeError as exc:
+                raise LangRuntimeError(f"{name}(): {exc}")
         if env.has(name):
             target = env.get(name)
             return self._call_value(target, pos, kw)
@@ -1182,7 +1260,24 @@ class Evaluator:
         return Asset("image", img, is_shape=False)
 
     def _builtin_video(self, pos, kw):
-        return Asset("video", self._resolve_path(str(pos[0])))
+        path = self._resolve_path(str(pos[0]))
+        return VideoAsset(path, source_start=kw.get("start"),
+                          source_end=kw.get("end", kw.get("stop")),
+                          speed=kw.get("speed"))
+
+    def _builtin_import_video(self, pos, kw):
+        return self._builtin_video(pos, kw)
+
+    def _builtin_split_video(self, pos, kw):
+        from motion_lang.video_engine import normalise_interval
+        if not pos:
+            raise LangRuntimeError("split_video() requires a video asset.")
+        source = pos[0]
+        intervals = kw.get("intervals", pos[1] if len(pos) > 1 else [])
+        if not isinstance(source, VideoAsset):
+            raise LangRuntimeError("split_video() expects a video() asset.")
+        return [source.cut(start=s, end=e)
+                for s, e in (normalise_interval(iv) for iv in intervals)]
 
     def _builtin_audio(self, pos, kw):
         return Asset("audio", self._resolve_path(str(pos[0])))
@@ -1202,11 +1297,36 @@ class Evaluator:
                          url=kw.get("url"), style=kw.get("style", "normal"))
 
     # -- builtins: scene ops -------------------------------------------------
+    def _stmt_transition_stmt(self, node, env):
+        """``transition(from=a, to=b, type="crossfade", duration=0.5)``.
+
+        Stamps ``transition_out`` on the *from* spec and ``transition_in``
+        on the *to* spec; overlap the layers' ``time=`` windows by
+        ``duration`` for a true blend.
+        """
+        from motion_lang.transitions import transition_statement
+        args_node = next((c for c in node.children
+                          if isinstance(c, Tree) and c.data == "args"), None)
+        pos, kw = self.eval_args(args_node, env)
+        from_spec = kw.get("from", pos[0] if pos else None)
+        to_spec = kw.get("to", pos[1] if len(pos) > 1 else None)
+        if from_spec is None or to_spec is None:
+            raise LangRuntimeError(
+                "transition() needs from= and to= render() layers.")
+        kind = kw.get("type", kw.get("kind", "crossfade"))
+        duration = float(kw.get("duration", 0.5))
+        params = {k: v for k, v in kw.items()
+                  if k not in ("from", "to", "type", "kind", "duration")}
+        record = transition_statement(from_spec, to_spec, type=str(kind),
+                                      duration=duration, **params)
+        self.transitions.append(record)
+        return record
+
     def _builtin_render(self, pos, kw):
         if not pos:
             raise LangRuntimeError("render() requires an asset argument.")
         asset = pos[0]
-        if not isinstance(asset, Asset):
+        if not isinstance(asset, (Asset, VideoAsset)):
             raise LangRuntimeError("render() expects an asset (shape/text/image/video).")
         kw = dict(kw)
         time = kw.pop("time", None)
@@ -1216,6 +1336,9 @@ class Evaluator:
         start = float(kw.pop("start", start))
         end = float(kw.pop("end", end))
         posv = kw.pop("pos", None)
+        if posv is None and isinstance(asset, VideoAsset) \
+                and asset.default_pos is not None:
+            posv = asset.default_pos
         pos_end = kw.pop("pos_end", None)
         scale = kw.pop("scale", None)
         scale_end = kw.pop("scale_end", None)

@@ -6,13 +6,20 @@ Welcome to the **Motion Language** repository. This document outlines the projec
 
 - **Creator / Author:** Adit Malik
 - **File Extension:** `.hmg`
-- **Language Version:** Motion Language 1.1 (Modern DSL)
+- **Language Version:** Motion Language 1.2 (Modern DSL)
 - **Core Stack:** Python 3.13+, Lark (Parser), MoviePy (Compositor), Pillow & OpenCV (Image/VFX Processing), Remotion (Web Studio Preview), Google Fonts (Dynamic Typography)
 
 ## New Language Features (v1.1)
 - **Python Interop:** Import any Python module (`import math`, `import numpy as np`, `import os.path`) directly in `.hmg`. Dotted attribute chains and calls work natively; local `.py` helpers resolve via bare `import helpers` or `import name from "file.py"` (see `motion_lang/modules.py`).
 - **Google Fonts:** Load web fonts dynamically via `load_font("Poppins", weight="bold")` or direct URLs (`url=`); system fonts first, Google Fonts fetch + cache (`~/.cache/motion_lang/fonts/`), graceful offline fallback (see `motion_lang/text_engine.py`).
 - **CSS Stylesheets:** Import `.css` files (`import styles from "theme.css"`) and apply classes to shapes and text layers (`class="glow-title"`); sheets join the compositor cascade (see `motion_lang/style.py`).
+
+## New Language Features (v1.2)
+- **Procedural Math:** `sin`/`cos`/`tan`, inverse trig, `sqrt`/`pow`, `lerp`, `clamp`, `map_range`, deterministic `noise(x, y, seed)` and constants `pi`/`e`/`tau` (see `motion_lang/math_engine.py`).
+- **Time Dynamics:** `$t`/`$frame` inside `render()` properties (`pos`, `scale`, `opacity`, …) re-evaluate every frame — e.g. `pos=(640 + cos($t*2)*300, 360)`; wrapped in `DynExpr`, composed with keyframes/easing/fx.
+- **Video Editorial:** `video(path, start=, end=, speed=)`, chainable `.cut()`/`.trim()`/`.subclip()`/`.speed()`/`.pos()`, `split_video(src, intervals=)` (see `motion_lang/video_engine.py`; lazy MoviePy ops).
+- **Transitions:** inline `transition_in/out="crossfade(0.8)"` / `"wipe_left(0.5)"` / `"slide_*"` / `"zoom_in/out"` / `"glitch(0.3, intensity=0.8)"`, or the `transition(from=, to=, type=, duration=)` statement wiring two `render()` layers (see `motion_lang/transitions.py`).
+- **Grammar:** rules live in `motion_lang/grammar.lark` (general `chain` for attribute/call/mixed chains, `TIME` token, `transition_stmt`).
 - **Core Stack:** Python 3.13+, Lark (Parser), MoviePy (Compositor), Pillow & OpenCV (Image/VFX Processing), Remotion (Web Studio Preview)
 - **License:** Independent / Proprietary (Adit Malik)
 - **Repository Structure:** Professional-grade, inspired by python/cpython, rust-lang/rust
@@ -32,7 +39,11 @@ motion_lang/
 │   ├── __init__.py             # Package initialization
 │   ├── cli.py                  # Command-line interface (motion command)
 │   ├── parser.py               # Legacy brace syntax parser (Lark grammar)
+│   ├── grammar.lark            # Modern DSL grammar (chain/TIME/transition rules)
 │   ├── lang.py                 # Modern DSL interpreter (indentation-based)
+│   ├── math_engine.py          # Procedural math + per-frame DynExpr dynamics
+│   ├── video_engine.py         # Video cut/trim/retime (lazy MoviePy ops)
+│   ├── transitions.py          # Transition specs + statement wiring
 │   ├── modules.py              # Python interop (import math/numpy/.py files)
 │   ├── text_engine.py          # Dynamic typography (local + Google Fonts)
 │   ├── engine.py               # MoviePy compositor & animation system
@@ -60,7 +71,9 @@ motion_lang/
 │
 ├── tests/                      # Test suites
 │   ├── test_language.py        # Modern DSL interpreter tests
-│   └── test_ae_features.py      # After Effects feature compatibility tests
+│   ├── test_interop.py         # Python interop + font/CSS tests
+│   ├── test_dynamics.py        # Math dynamics, video trim, transition tests
+│   └── test_ae_features.py     # After Effects feature compatibility tests
 │
 ├── assets/                     # Static assets
 │   └── logo/                   # Branding & iconography
@@ -194,6 +207,11 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 - VFX pipeline integration
 - CSS stylesheet support
 - Blend mode application
+- Per-frame dynamic properties (`DynExpr` from `$t`/`$frame`)
+- Transition pipeline: crossfade/dissolve, directional wipes (alpha masks),
+  slides, zoom in/out, decaying glitch bursts (`motion_lang/transitions.py`)
+- Video editorial: lazy cut/retime with timeline clamping
+  (`motion_lang/video_engine.py`)
 
 ### 4. **VFX Pipeline (vfx.py)**
 - PIL & NumPy-based effect implementations
@@ -284,7 +302,10 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 |--------|----------------|----------------------|
 | cli.py | Command-line interface | `main()`, `parse_args()` |
 | parser.py | Legacy syntax parsing | Lark grammar, `_extract_fx_list()` |
-| lang.py | Modern DSL interpreter | `Evaluator`, `Env`, `Asset`, `Layer` |
+| lang.py | Modern DSL interpreter | `Evaluator`, `Env`, `Asset`, `VideoAsset`, `Layer` |
+| math_engine.py | Procedural math + dynamics | `DynExpr`, `lerp/clamp/map_range/noise`, `MATH_FUNCS` |
+| video_engine.py | Video cut/retime | `cut_clip()`, `retime_clip()`, `split_clip()`, `apply_ops()` |
+| transitions.py | Transition specs | `parse_transition_spec()`, `transition_statement()` |
 | modules.py | Python interop | `import_dotted()`, `load_py_file()`, `resolve_py_import()` |
 | text_engine.py | Dynamic fonts | `load_font()`, `find_local_font()`, `fetch_google_font()` |
 | engine.py | Video composition | `Compositor`, `_apply_fx_stack()`, `_split_fx()` |

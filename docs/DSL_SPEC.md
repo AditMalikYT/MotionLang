@@ -300,7 +300,9 @@ audio:
 | `text(str, **opts)` | text | see text options below |
 | `file(path)` | image | local image, loaded relative to the script (falls back to the working dir) |
 | `wiki(query)` / `web(query)` | image | local match first (`assets/<query>.*`), then web search |
-| `video(path)` | video | local video file |
+| `video(path)` | video | local video file; accepts `start=`/`end=`/`speed=` trim kwargs |
+| `import_video(path)` | video | alias of `video()` |
+| `split_video(src, intervals=[…])` | list of video | subclips per `(start, end)` interval |
 | `audio(path)` | audio | local audio file (for `play`) |
 
 **Text options** (aliases normalize to canonical keys):
@@ -336,7 +338,90 @@ warning. `weight` accepts names (`"thin"`…`"black"`) or numbers (`400`…`900`
 ### Utilities
 
 `print`, `len`, `range`, `abs`, `min`, `max`, `round`, `int`, `float`, `str`,
-`bool`, `sum`, `list`, `sin`, `cos`, `load_font`.
+`bool`, `sum`, `list`, `load_font`.
+
+### Math
+
+Trigonometry, rounding, powers and remapping helpers — all usable with `$t`
+(see §10.1) or statically:
+
+`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2(y, x)`, `sqrt`, `pow`,
+`abs`, `floor`, `ceil`, `round`, `min`, `max`, `lerp(a, b, t)`,
+`clamp(v, lo, hi)`, `map_range(v, in_min, in_max, out_min, out_max)`,
+`noise(x, y=0, seed=0)` (deterministic smooth value noise in [0, 1]),
+plus the constants `pi`, `e`, `tau`.
+
+### 10.1 Procedural animation with `$t` / `$frame`
+
+Inside `render()` properties (`pos`, `pos_end`, `scale`, `scale_end`,
+`opacity`, `opacity_end`), `$t` (clip-local seconds) and `$frame` (`$t *
+fps`) mark an expression as *dynamic*: it is re-evaluated every frame
+instead of once.
+
+```hmg
+scene:
+    orb = shape("circle", radius=50, color="#00E5FF")
+    layer(z=1):
+        render(orb, time=[0, 6],
+               pos=(640 + cos($t * 2.0) * 300, 360 + sin($t * 3.0) * 150),
+               scale=1.0 + sin($t * 5.0) * 0.2,
+               opacity=0.6 + 0.4 * noise($t * 0.8, seed=3))
+```
+
+Dynamics compose with keyframe ranges (`pos=(x0, y0), pos_end=...`),
+easing, `float_y`/`pulse` modulators and transitions. Using `$t` outside
+`render()` properties is an error with a pointer to this section. The
+Remotion studio export bakes the start pose (`t=0`).
+
+### 10.2 Video cutting, trimming and retiming
+
+```hmg
+v = video("assets/input.mp4", start=2.5, end=10.0)   // trim on import
+v1 = v.cut(start=0.5, end=4.2).speed(1.2)             // chainable grade
+slow = v.trim(start=1.0, duration=2.0).speed(0.5)     // slow-motion
+parts = split_video(v, intervals=[(0, 3), (5, 8)])    // splice selects
+
+scene:
+    layer(z=1):
+        render(v1, time=[0, 4], pos=(0, 0))
+```
+
+`.cut()` / `.trim()` / `.subclip()` take `start=`/`end=` (or `duration=`);
+`.speed(f)` retimes (`> 1` faster, `< 1` slow-motion, clamped to
+`[0.05, 16]`); `.pos(x, y)` stores a default position used when
+`render()` omits `pos`. Cutting is lazy (shared frames, cache-friendly);
+if trimmed media is shorter than its timeline window the window is
+clamped with a warning.
+
+### 10.3 Transitions
+
+Inline form (both dialects accept these strings as `transition_in=` /
+`transition_out=` render options):
+
+```
+crossfade(0.8) / dissolve(0.8) / fade(0.5)
+wipe_left(0.5) / wipe_right / wipe_up / wipe_down
+slide_left / slide_right / slide_up / slide_down (durations in seconds)
+zoom_in(0.6) / zoom_out(0.6)
+glitch(0.3, intensity=0.8, seed=7)
+```
+
+Statement form (modern DSL) wires two `render()` layers — entrances play
+over the first `duration` seconds of the *to* layer, exits over the last
+`duration` of the *from* layer; overlap the `time=` windows by `duration`
+for a true blend:
+
+```hmg
+scene:
+    layer(z=1):
+        la = render(text("Scene 1"), time=[0, 3], pos=(100, 100))
+    layer(z=2):
+        lb = render(text("Scene 2"), time=[2.5, 5.5], pos=(100, 100))
+    transition(from=la, to=lb, type="crossfade", duration=0.5)
+```
+
+`type=` also accepts `wipe(direction="left", duration=0.5)` and
+`slide(direction="right", duration=0.5)` keyword forms.
 
 ---
 

@@ -232,28 +232,72 @@ def _parse_seconds(spec) -> float:
     except ValueError:
         return 0.0
 
-_TRANS_RE = re.compile(r"^(\w+)\s*(?:\(\s*([0-9.]+)\s*s?\s*\))?\s*$")
+_TRANS_RE = re.compile(r"^([a-z_]+)\s*(?:\(([^)]*)\))?\s*$")
 
-def parse_transition(spec) -> Tuple[Optional[str], float]:
+def _coerce_trans_value(text: str):
+    s = text.strip().strip('"').strip("'")
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        return s
+
+
+def parse_transition(spec) -> Tuple[Optional[str], float, Dict]:
+    """Parse ``"wipe_left(0.5)"`` / ``"glitch(0.3, intensity=0.8, seed=7)"``.
+
+    Returns ``(name, duration, params)``. Unknown names yield
+    ``(None, 0.0, {})`` with a warning.
+    """
     if spec is None:
-        return None, 0.0
+        return None, 0.0, {}
     if isinstance(spec, (int, float)):
-        return None, 0.0
+        return None, 0.0, {}
+    if isinstance(spec, (list, tuple)):
+        # Already-parsed triple from the transitions module.
+        if spec and isinstance(spec[0], str):
+            name = str(spec[0])
+            dur = float(spec[1]) if len(spec) > 1 else 0.5
+            params = dict(spec[2]) if len(spec) > 2 else {}
+            return name, dur, params
+        return None, 0.0, {}
     s = str(spec).strip().lower().strip('"').strip("'")
     m = _TRANS_RE.match(s)
     if not m:
         print(f"[Engine] Unrecognised transition '{spec}'.")
-        return None, 0.0
-    name, dur = m.group(1), _parse_seconds(m.group(2) or 0.5 if m.group(2) else 0.5)
+        return None, 0.0, {}
+    name, dur = m.group(1), 0.5
+    params: Dict = {}
+    inner = (m.group(2) or "").strip()
+    if inner:
+        parts = [p.strip() for p in inner.split(",") if p.strip()]
+        if parts and "=" not in parts[0]:
+            dur = _parse_seconds(parts[0])
+            parts = parts[1:]
+        for part in parts:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                params[k.strip()] = _coerce_trans_value(v)
     # normalise aliases
     aliases = {"fade": "fade_in", "fadein": "fade_in", "fadeout": "fade_out",
                "slideleft": "slide_left", "slideright": "slide_right",
-               "zoomin": "zoom_in", "slide": "slide_right"}
+               "slideup": "slide_up", "slidedown": "slide_down",
+               "zoomin": "zoom_in", "zoomout": "zoom_out",
+               "slide": "slide_right", "wipe": "wipe_left",
+               "wipeleft": "wipe_left", "wiperight": "wipe_right",
+               "wipeup": "wipe_up", "wipedown": "wipe_down",
+               "xfade": "crossfade", "cross_dissolve": "dissolve"}
     name = aliases.get(name, name)
-    if name not in ("fade_in", "fade_out", "slide_left", "slide_right", "zoom_in"):
+    if name not in ("fade_in", "fade_out", "crossfade", "dissolve",
+                    "slide_left", "slide_right", "slide_up", "slide_down",
+                    "zoom_in", "zoom_out", "wipe_left", "wipe_right",
+                    "wipe_up", "wipe_down", "glitch"):
         print(f"[Engine] Unsupported transition '{name}'.")
-        return None, 0.0
-    return name, float(dur)
+        return None, 0.0, {}
+    return name, float(dur), params
 
 # ---------------------------------------------------------------------------
 # Text layer helper (Pillow -> RGBA, no ImageMagick dependency)
@@ -521,30 +565,50 @@ class Compositor:
         return _static_resize(clip, scale=scale, size=size)
 
     def _apply_transitions(self, clip, duration: float, transition_in=None, transition_out=None):
-        tin, din = parse_transition(transition_in) if transition_in else (None, 0.0)
-        tout, dout = parse_transition(transition_out) if transition_out else (None, 0.0)
-        if tin in ("fade_in",) and din > 0:
+        tin, din, pin = parse_transition(transition_in) if transition_in else (None, 0.0, {})
+        tout, dout, pout = parse_transition(transition_out) if transition_out else (None, 0.0, {})
+        if tin in ("fade_in", "crossfade", "dissolve") and din > 0:
             clip = _faded(clip, "in", min(din, duration))
-        if tout in ("fade_out",) and dout > 0:
+        if tout in ("fade_out", "crossfade", "dissolve") and dout > 0:
             clip = _faded(clip, "out", min(dout, duration))
         # store slide/zoom specs for position/scale composition
-        clip._slide_in = (tin, din) if tin in ("slide_left", "slide_right") else (None, 0.0)
-        clip._slide_out = (tout, dout) if tout in ("slide_left", "slide_right") else (None, 0.0)
+        _slides = ("slide_left", "slide_right", "slide_up", "slide_down")
+        clip._slide_in = (tin, din) if tin in _slides else (None, 0.0)
+        clip._slide_out = (tout, dout) if tout in _slides else (None, 0.0)
         clip._zoom_in = (tin == "zoom_in", din) if tin == "zoom_in" else (False, 0.0)
+        clip._zoom_out = (tin == "zoom_out", din) if tin == "zoom_out" else (False, 0.0)
+        clip._wipe_in = (tin, din) if (tin or "").startswith("wipe_") else (None, 0.0)
+        clip._wipe_out = (tout, dout) if (tout or "").startswith("wipe_") else (None, 0.0)
+        clip._glitch_in = (din, pin) if tin == "glitch" else (0.0, {})
+        clip._glitch_out = (dout, pout) if tout == "glitch" else (0.0, {})
         return clip
 
     def _keyframed_pos(self, base_pos, pos_end, duration, easing_fn,
                        slide_in, slide_out, float_fx=None):
-        has_anim = pos_end is not None or slide_in[0] or slide_out[0] or float_fx
+        from motion_lang.math_engine import DynExpr
+        dyn0 = base_pos if isinstance(base_pos, DynExpr) else None
+        dyn1 = pos_end if isinstance(pos_end, DynExpr) else None
+        has_anim = pos_end is not None or slide_in[0] or slide_out[0] \
+            or float_fx or dyn0 is not None
         if not has_anim:
             return lambda t: base_pos
-        x0, y0 = base_pos
-        x1, y1 = (pos_end if pos_end is not None else base_pos)
+        x0, y0 = (None, None) if dyn0 is not None else tuple(base_pos)
+        static_end = None if (dyn1 is not None or pos_end is None) else tuple(pos_end)
         float_specs = list(float_fx or [])
         def _pos(t: float):
             tt = max(0.0, min(1.0, t / duration if duration > 0 else 1.0))
             e = easing_fn(tt)
-            x, y = lerp(x0, x1, e), lerp(y0, y1, e)
+            if dyn0 is not None:
+                p0 = tuple(float(v) for v in dyn0.eval_at(t))
+            else:
+                p0 = (x0, y0)
+            if dyn1 is not None:
+                p1 = tuple(float(v) for v in dyn1.eval_at(t))
+            elif static_end is not None:
+                p1 = static_end
+            else:
+                p1 = p0
+            x, y = lerp(p0[0], p1[0], e), lerp(p0[1], p1[1], e)
             for params in float_specs:
                 dist = float(_fx_param(params, "distance", 20.0, index=0))
                 spd = float(_fx_param(params, "speed", 1.0, index=1))
@@ -560,6 +624,16 @@ class Compositor:
                 if t < d:
                     k = 1.0 - (t / d)
                     x -= W * k
+            elif slide_in[0] == "slide_up":
+                d = slide_in[1] or 0.5
+                if t < d:
+                    k = 1.0 - (t / d)
+                    y += self.height * k
+            elif slide_in[0] == "slide_down":
+                d = slide_in[1] or 0.5
+                if t < d:
+                    k = 1.0 - (t / d)
+                    y -= self.height * k
             if slide_out[0] == "slide_left":
                 d = slide_out[1] or 0.5
                 if t > duration - d:
@@ -570,21 +644,42 @@ class Compositor:
                 if t > duration - d:
                     k = (t - (duration - d)) / d
                     x += W * k
+            elif slide_out[0] == "slide_up":
+                d = slide_out[1] or 0.5
+                if t > duration - d:
+                    k = (t - (duration - d)) / d
+                    y -= self.height * k
+            elif slide_out[0] == "slide_down":
+                d = slide_out[1] or 0.5
+                if t > duration - d:
+                    k = (t - (duration - d)) / d
+                    y += self.height * k
             return (x, y)
         return _pos
 
     def _keyframed_scale(self, base_scale, scale_end, duration, easing_fn, zoom_in,
-                         pulse_fx=None):
-        has_anim = scale_end is not None or zoom_in[0] or pulse_fx
+                         zoom_out=(False, 0.0), pulse_fx=None):
+        from motion_lang.math_engine import DynExpr
+        dyn0 = base_scale if isinstance(base_scale, DynExpr) else None
+        dyn1 = scale_end if isinstance(scale_end, DynExpr) else None
+        has_anim = scale_end is not None or zoom_in[0] or zoom_out[0] \
+            or pulse_fx or dyn0 is not None
         if not has_anim:
             return None
-        s0 = float(base_scale) if base_scale is not None else 1.0
-        s1 = float(scale_end) if scale_end is not None else s0
+        s0 = None if dyn0 is not None else (
+            float(base_scale) if base_scale is not None else 1.0)
+        s1_static = None if (dyn1 is not None or scale_end is None) else float(scale_end)
         pulse_specs = list(pulse_fx or [])
         def _sc(t: float):
             tt = max(0.0, min(1.0, t / duration if duration > 0 else 1.0))
             e = easing_fn(tt)
-            v = lerp(s0, s1, e)
+            v0 = float(dyn0.eval_at(t)) if dyn0 is not None else s0
+            if dyn1 is not None:
+                v = lerp(v0, float(dyn1.eval_at(t)), e)
+            elif s1_static is not None or scale_end is not None:
+                v = lerp(v0, s1_static if s1_static is not None else v0, e)
+            else:
+                v = v0
             for params in pulse_specs:
                 amount = float(_fx_param(params, "amount", 0.1, index=0))
                 spd = float(_fx_param(params, "speed", 1.0, index=1))
@@ -594,6 +689,11 @@ class Compositor:
                 if t < d:
                     k = t / d
                     v = lerp(0.2, v, k)
+            if zoom_out[0]:
+                d = zoom_out[1] or 0.5
+                if t < d:
+                    k = t / d
+                    v = lerp(v * 1.8, v, k)
             return max(0.01, v)
         return _sc
 
@@ -601,31 +701,49 @@ class Compositor:
                       scale=None, scale_end=None, size=None, easing="linear",
                       transition_in=None, transition_out=None, opacity=None,
                       opacity_end=None, float_fx=None, pulse_fx=None):
+        from motion_lang.math_engine import DynExpr
         easing_fn = resolve_easing(easing)
         clip = _timed(clip, start, duration)
         clip = self._apply_transitions(clip, duration, transition_in, transition_out)
         slide_in = getattr(clip, "_slide_in", (None, 0.0))
         slide_out = getattr(clip, "_slide_out", (None, 0.0))
         zoom_in = getattr(clip, "_zoom_in", (False, 0.0))
-        # scale: keyframed wins; else static (scale xor size)
+        zoom_out = getattr(clip, "_zoom_out", (False, 0.0))
+        # scale: keyframed wins; else static (scale xor size). A DynExpr
+        # must never reach the static path (it is not a number).
         sc_fn = self._keyframed_scale(scale, scale_end, duration, easing_fn,
-                                      zoom_in, pulse_fx=pulse_fx)
+                                      zoom_in, zoom_out, pulse_fx=pulse_fx)
         if sc_fn is not None:
             clip = _dynamic_resize(clip, sc_fn)
-        else:
+        elif not isinstance(scale, DynExpr):
             clip = self._apply_static(clip, scale=scale, size=size)
-        # position (always a function so slides/keyframes compose)
-        pos_fn = self._keyframed_pos(tuple(pos), tuple(pos_end) if pos_end else None,
-                                     duration, easing_fn, slide_in, slide_out,
-                                     float_fx=float_fx)
+        # position (always a function so slides/keyframes compose). A dynamic
+        # base/endpoint flows through the same modulators as static values.
+        pos_fn = self._keyframed_pos(
+            pos if isinstance(pos, DynExpr) else tuple(pos),
+            pos_end if isinstance(pos_end, DynExpr)
+            else (tuple(pos_end) if pos_end else None),
+            duration, easing_fn, slide_in, slide_out, float_fx=float_fx)
         clip = _positioned(clip, pos_fn)
-        # opacity keyframes via with_opacity (static only; for animated, modulate mask)
-        if opacity is not None and opacity_end is not None and opacity != opacity_end:
-            o0 = float(opacity)
-            o1 = float(opacity_end)
-            def _op(t: float, _o0=o0, _o1=o1):
+        # opacity: static value, static keyframes, and/or per-frame dynamics.
+        dyn_o0 = opacity if isinstance(opacity, DynExpr) else None
+        dyn_o1 = opacity_end if isinstance(opacity_end, DynExpr) else None
+        st_o0 = None if (opacity is None or dyn_o0 is not None) else float(opacity)
+        st_o1 = None if (opacity_end is None or dyn_o1 is not None) else float(opacity_end)
+        if dyn_o0 is not None or dyn_o1 is not None or (
+                st_o0 is not None and st_o1 is not None and st_o0 != st_o1):
+            def _op(t: float, _d0=dyn_o0, _d1=dyn_o1, _s0=st_o0, _s1=st_o1):
                 tt = max(0.0, min(1.0, t / duration if duration > 0 else 1.0))
-                return lerp(_o0, _o1, easing_fn(tt))
+                e = easing_fn(tt)
+                v0 = float(_d0.eval_at(t)) if _d0 is not None \
+                    else (_s0 if _s0 is not None else 1.0)
+                if _d1 is not None:
+                    v1 = float(_d1.eval_at(t))
+                elif _s1 is not None:
+                    v1 = _s1
+                else:
+                    v1 = v0
+                return lerp(v0, v1, e)
             # Apply per-frame opacity via transform (needs time access)
             def _opacity_tf(gf, t):
                 pic = gf(t).copy()
@@ -634,11 +752,119 @@ class Compositor:
                     pic[:, :, 3] = (pic[:, :, 3].astype(float) * alpha).astype(np.uint8)
                 return pic
             clip = _frame_mapped(clip, _opacity_tf)
-        elif opacity is not None:
-            clip = _with_opacity(clip, float(opacity))
-        elif opacity_end is not None and opacity_end != 1.0:
-            clip = _with_opacity(clip, float(opacity_end))
+        elif st_o0 is not None:
+            clip = _with_opacity(clip, st_o0)
+        elif st_o1 is not None and st_o1 != 1.0:
+            clip = _with_opacity(clip, st_o1)
+        # wipe reveals (animated alpha masks) and decaying glitch bursts.
+        clip = self._apply_wipe(clip, getattr(clip, "_wipe_in", (None, 0.0)),
+                                getattr(clip, "_wipe_out", (None, 0.0)), duration)
+        clip = self._apply_transition_glitch(
+            clip, getattr(clip, "_glitch_in", (0.0, {})),
+            getattr(clip, "_glitch_out", (0.0, {})), duration)
         return clip
+
+    @staticmethod
+    def _wipe_window(direction: str, duration: float, when: str,
+                     w: int, h: int, total: float):
+        """Per-frame reveal fraction 0..1 for a wipe edge."""
+        d = max(1e-6, float(duration))
+        def _frac(t: float) -> float:
+            if when == "in":
+                return min(1.0, max(0.0, t / d))
+            return 1.0 - min(1.0, max(0.0, (t - (total - d)) / d))
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        def _window(t: float):
+            f = _frac(t)
+            if direction == "right":
+                m = xx >= (w * (1.0 - f))
+            elif direction == "up":
+                m = yy >= (h * (1.0 - f))
+            elif direction == "down":
+                m = yy < (h * f)
+            else:  # "left"
+                m = xx < (w * f)
+            return m.astype(np.float32)
+        return _window
+
+    def _apply_wipe(self, clip, wipe_in, wipe_out, duration: float):
+        """True hard-edge wipe reveals via animated alpha masks.
+
+        Never fatal: any failure degrades to the un-wiped layer with a
+        warning, so one bad transition can't kill a render.
+        """
+        jobs = []
+        if wipe_in[0]:
+            jobs.append(("in", wipe_in[0].split("_", 1)[1], wipe_in[1]))
+        if wipe_out[0]:
+            jobs.append(("out", wipe_out[0].split("_", 1)[1], wipe_out[1]))
+        for when, direction, dur in jobs:
+            if dur <= 0:
+                continue
+            try:
+                w, h = clip.size
+                window = self._wipe_window(direction, dur, when, w, h, duration)
+                if _MPV2:
+                    from moviepy.video.VideoClip import VideoClip as _VC
+                    base = clip.mask
+                    if base is None:
+                        base = _VC(lambda t: np.ones((h, w)),
+                                   is_mask=True, duration=clip.duration)
+                    clip = clip.with_mask(base.transform(
+                        lambda gf, t: np.clip(gf(t), 0, 1) * window(t)))
+                else:
+                    from moviepy.video.VideoClip import VideoClip as _VC
+                    base = clip.mask
+                    if base is None:
+                        base = _VC(lambda t: np.ones((h, w)),
+                                   ismask=True, duration=clip.duration)
+                    clip.mask = base.fl(
+                        lambda gf, t: np.clip(gf(t), 0, 1) * window(t),
+                        keep_duration=True)
+            except Exception as exc:
+                print(f"[Engine] Wipe transition failed ({exc}); skipped.")
+        return clip
+
+    def _apply_transition_glitch(self, clip, glitch_in, glitch_out,
+                                 duration: float):
+        """Seeded RGB-split burst decaying across the transition window."""
+        jobs = []
+        if glitch_in[0] > 0:
+            jobs.append(("in", glitch_in[0], glitch_in[1]))
+        if glitch_out[0] > 0:
+            jobs.append(("out", glitch_out[0], glitch_out[1]))
+        if not jobs:
+            return clip
+
+        def _tf(gf, t):
+            frame = gf(t)
+            if frame.ndim == 2:
+                frame = np.stack([frame] * 3, axis=-1)
+            if frame.dtype != np.uint8:
+                frame = np.clip(frame, 0, 255).astype(np.uint8)
+            has_alpha = frame.shape[2] == 4 if frame.ndim == 3 else False
+            img = Image.fromarray(frame)
+            for when, dur, params in jobs:
+                d = max(1e-6, float(dur))
+                prog = min(1.0, max(0.0, t / d)) if when == "in" \
+                    else min(1.0, max(0.0, (t - (duration - d)) / d))
+                strength = 1.0 - prog
+                if strength <= 0:
+                    continue
+                intensity = float(params.get("intensity", 0.8)) * strength
+                seed = params.get("seed", 0)
+                img = glitch(img, intensity,
+                             seed=None if seed is None else int(seed))
+            out = np.array(img)
+            if not has_alpha and out.shape[2] == 4:
+                out = out[:, :, :3]
+            return out
+
+        try:
+            return _frame_mapped(clip, _tf)
+        except Exception as exc:
+            print(f"[Engine] Glitch transition failed ({exc}); skipped.")
+            return clip
 
     # -- AE-style layer effects ---------------------------------------------
     def _apply_fx_stack(self, image: Image.Image, fx) -> Tuple[Image.Image, Optional[str], Tuple[int, int]]:
@@ -904,7 +1130,8 @@ class Compositor:
                         transition_in=None, transition_out=None,
                         opacity=None, opacity_end=None,
                         fx: Optional[List[tuple]] = None,
-                        css_class=None, css_id=None):
+                        css_class=None, css_id=None,
+                        source_start=None, source_end=None, speed=None):
         styled = self.style_for(css_class, css_id)
         merged = self._merge_style(
             {"pos": pos, "size": size, "scale": scale, "opacity": opacity,
@@ -917,6 +1144,15 @@ class Compositor:
         opacity = merged["opacity"]
         fx = merged["fx"]
         clip = VideoFileClip(video_path)
+        # Editorial ops (cut before retime); both are lazy in MoviePy.
+        if source_start is not None or source_end is not None or speed is not None:
+            from motion_lang.video_engine import apply_ops, clip_duration
+            clip, used = apply_ops(clip, source_start, source_end, speed)
+            media_len = clip_duration(clip)
+            if media_len is not None and end - start > media_len:
+                print(f"[Engine] Trimmed media ({media_len:.2f}s) is shorter "
+                      f"than the timeline window ({end - start:.2f}s); clamping.")
+                end = start + max(0.1, media_len)
         duration = max(0.1, end - start)
         static_fx, dynamic_fx, float_fx, pulse_fx = self._split_fx(fx)
         clip = self._compose_clip(clip, start=start, duration=duration, pos=pos,

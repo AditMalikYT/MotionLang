@@ -30,6 +30,9 @@ scene:
 - **Real language** — variables, `fn` functions, `class` OOP, `for`/`repeat`, `if/else if/else`, `import`/`export` modules.
 - **Video-first** — `config:`, `scene:`, `layer(z=N):`, `render(...)`, `audio:` / `play(...)`.
 - **Rich visuals** — shapes, native styled text, images, video, and an After Effects-style `fx=[...]` stack (glow, blur, chromatic aberration, glitch, vignette, motion blur, blend modes).
+- **Procedural math** — `sin`/`cos`/`lerp`/`clamp`/`noise`/`pi` drive any property per frame via `$t`/`$frame`, e.g. `pos=(640 + cos($t*2)*300, 360)`.
+- **Video editorial** — `video(path, start=, end=, speed=)`, chainable `.cut().speed()`, `split_video()`.
+- **Transitions** — `crossfade`, directional `wipe`/`slide`, `zoom_in/out`, `glitch`, inline or via `transition(from=, to=, type=, duration=)`.
 - **Live studio** — `--studio` exports a timeline the Remotion/React editor previews and tweaks in real time.
 
 ## Install
@@ -82,6 +85,10 @@ cd studio && npm run render                 # -> studio/out/studio.mp4 (Remotion
 ```
 motion_lang/
   lang.py        # modern indentation-based interpreter (fn/class/loops/modules)
+  grammar.lark   # modern DSL grammar (chain/TIME/transition rules)
+  math_engine.py # procedural math + per-frame $t/$frame dynamics
+  video_engine.py# video cut/trim/retime (lazy MoviePy ops)
+  transitions.py # transition specs + statement wiring
   parser.py      # legacy grammar + syntax dispatch
   engine.py      # MoviePy compositor: layers, keyframes, text, blend modes
   vfx.py         # AE-style pixel effects
@@ -92,7 +99,7 @@ motion_lang/
 studio/          # Remotion + React real-time editor (+ sync/render API)
 examples/        # .hmg scripts + components + styles
 docs/            # DSL specification
-tests/           # language + AE feature test suites
+tests/           # language + interop + dynamics + AE feature test suites
 ```
 
 ## Tests
@@ -100,9 +107,11 @@ tests/           # language + AE feature test suites
 ```bash
 python tests/test_language.py
 python tests/test_ae_features.py
+python tests/test_interop.py
+python tests/test_dynamics.py
 ```
 
-Both suites pass on MoviePy 1.x and 2.x.
+All suites pass on MoviePy 1.x and 2.x.
 
 
 ## License
