@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from lark import Lark, Token, Tree, UnexpectedInput
 from lark.indenter import Indenter
 
-from motion_lang.engine import Compositor
+from motion_lang.engine import Compositor, EASING_FUNCTIONS
 from motion_lang.fetcher import create_fallback_image, get_web_transparent_image
 from motion_lang.parser import MotionSyntaxError
 from motion_lang.shapes import generate_shape
@@ -407,7 +407,13 @@ class Evaluator:
 
     # -- orchestration ----------------------------------------------------
     def run(self, tree: Tree, env: Optional[Env] = None) -> Env:
-        env = env or Env()
+        if env is None:
+            env = Env()
+        # Bare easing names (ease=linear, ease=ease_out, ...) evaluate
+        # to their string form, so .hmg files don't need quotes.
+        for _ename in EASING_FUNCTIONS:
+            if not env.has(_ename):
+                env.define(_ename, _ename)
         for stmt in tree.children:
             self.exec_stmt(stmt, env)
         self._reapply_transitions()
@@ -1360,7 +1366,7 @@ class Evaluator:
             pos_end=tuple(pos_end) if isinstance(pos_end, (list, tuple)) else pos_end,
             scale=scale, scale_end=scale_end,
             size=tuple(kw.pop("size")) if isinstance(kw.get("size"), (list, tuple)) else None,
-            easing=kw.pop("easing", None),
+            easing=kw.pop("easing", kw.pop("ease", None)),
             transition_in=kw.pop("transition_in", None),
             transition_out=kw.pop("transition_out", None),
             opacity=opacity, opacity_end=opacity_end, fx=fx,

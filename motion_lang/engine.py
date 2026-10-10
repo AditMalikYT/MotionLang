@@ -182,6 +182,181 @@ from motion_lang import style as _css
 def _linear(t: float) -> float:
     return t
 
+def _ease_in_quad(t: float) -> float:
+    return t * t
+
+
+def _ease_out_quad(t: float) -> float:
+    return 1.0 - (1.0 - t) * (1.0 - t)
+
+
+def _ease_in_out_quad(t: float) -> float:
+    if t < 0.5:
+        return 2 * t * t
+    return 1.0 - pow(-2 * t + 2, 2) / 2.0
+
+
+def _ease_in_cubic(t: float) -> float:
+    return t * t * t
+
+
+def _ease_out_cubic(t: float) -> float:
+    return 1.0 - pow(1.0 - t, 3)
+
+
+def _ease_in_out_cubic(t: float) -> float:
+    if t < 0.5:
+        return 4 * t * t * t
+    return 1.0 - pow(-2 * t + 2, 3) / 2.0
+
+
+def _ease_in_quart(t: float) -> float:
+    return t * t * t * t
+
+
+def _ease_out_quart(t: float) -> float:
+    return 1.0 - pow(1.0 - t, 4)
+
+
+def _ease_in_out_quart(t: float) -> float:
+    if t < 0.5:
+        return 8 * t * t * t * t
+    return 1.0 - pow(-2 * t + 2, 4) / 2.0
+
+
+def _ease_in_quint(t: float) -> float:
+    return t * t * t * t * t
+
+
+def _ease_out_quint(t: float) -> float:
+    return 1.0 - pow(1.0 - t, 5)
+
+
+def _ease_in_out_quint(t: float) -> float:
+    if t < 0.5:
+        return 16 * t * t * t * t * t
+    return 1.0 - pow(-2 * t + 2, 5) / 2.0
+
+
+def _ease_in_sine(t: float) -> float:
+    return 1.0 - math.cos((t * math.pi) / 2.0)
+
+
+def _ease_out_sine(t: float) -> float:
+    return math.sin((t * math.pi) / 2.0)
+
+
+def _ease_in_out_sine(t: float) -> float:
+    return -(math.cos(math.pi * t) - 1.0) / 2.0
+
+
+def _ease_in_expo(t: float) -> float:
+    if t <= 0.0:
+        return 0.0
+    return pow(2, 10 * t - 10)
+
+
+def _ease_out_expo(t: float) -> float:
+    if t >= 1.0:
+        return 1.0
+    return 1.0 - pow(2, -10 * t)
+
+
+def _ease_in_out_expo(t: float) -> float:
+    if t <= 0.0:
+        return 0.0
+    if t >= 1.0:
+        return 1.0
+    if t < 0.5:
+        return pow(2, 20 * t - 10) / 2.0
+    return (2.0 - pow(2, -20 * t + 10)) / 2.0
+
+
+def _ease_in_circ(t: float) -> float:
+    return 1.0 - math.sqrt(max(0.0, 1.0 - t * t))
+
+
+def _ease_out_circ(t: float) -> float:
+    return math.sqrt(max(0.0, 1.0 - pow(t - 1, 2)))
+
+
+def _ease_in_out_circ(t: float) -> float:
+    if t < 0.5:
+        return (1.0 - math.sqrt(max(0.0, 1.0 - pow(2 * t, 2)))) / 2.0
+    return (math.sqrt(max(0.0, 1.0 - pow(-2 * t + 2, 2))) + 1.0) / 2.0
+
+
+def _ease_in_back(t: float) -> float:
+    c1, c3 = 1.70158, 2.70158
+    return c3 * t * t * t - c1 * t * t
+
+
+def _ease_out_back(t: float) -> float:
+    c1, c3 = 1.70158, 2.70158
+    return 1 + c3 * pow(t - 1, 3) + c1 * pow(t - 1, 2)
+
+
+def _ease_in_out_back(t: float) -> float:
+    c1, c2 = 1.70158, 1.70158 * 1.525
+    if t < 0.5:
+        return (pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2.0
+    return (pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2.0
+
+
+def _ease_in_elastic(t: float) -> float:
+    if t <= 0.0:
+        return 0.0
+    if t >= 1.0:
+        return 1.0
+    return -pow(2, 10 * t - 10) * math.sin((t * 10 - 10.75) * (2 * math.pi / 3))
+
+
+def _ease_out_elastic(t: float) -> float:
+    if t <= 0.0:
+        return 0.0
+    if t >= 1.0:
+        return 1.0
+    return pow(2, -10 * t) * math.sin((t * 10 - 0.75) * (2 * math.pi / 3)) + 1.0
+
+
+def _ease_in_out_elastic(t: float) -> float:
+    if t <= 0.0:
+        return 0.0
+    if t >= 1.0:
+        return 1.0
+    if t < 0.5:
+        return -(pow(2, 20 * t - 10) * math.sin((20 * t - 11.125) * (2 * math.pi / 4.5))) / 2.0
+    return (pow(2, -20 * t + 10) * math.sin((20 * t - 11.125) * (2 * math.pi / 4.5))) / 2.0 + 1.0
+
+
+def _ease_out_bounce(t: float) -> float:
+    n1, d1 = 7.5625, 2.75
+    if t < 1 / d1:
+        return n1 * t * t
+    elif t < 2 / d1:
+        t -= 1.5 / d1
+        return n1 * t * t + 0.75
+    elif t < 2.5 / d1:
+        t -= 2.25 / d1
+        return n1 * t * t + 0.9375
+    t -= 2.625 / d1
+    return n1 * t * t + 0.984375
+
+
+def _ease_in_bounce(t: float) -> float:
+    return 1.0 - _ease_out_bounce(1.0 - t)
+
+
+def _ease_in_out_bounce(t: float) -> float:
+    if t < 0.5:
+        return (1.0 - _ease_out_bounce(1.0 - 2 * t)) / 2.0
+    return (1.0 + _ease_out_bounce(2 * t - 1.0)) / 2.0
+
+
+def _smooth(t: float) -> float:
+    return t * t * (3.0 - 2.0 * t)
+
+
 def _ease_in(t: float) -> float:
     return t * t * t
 
@@ -208,23 +383,74 @@ def _bounce(t: float) -> float:
 
 EASING_FUNCTIONS: Dict[str, Callable[[float], float]] = {
     "linear": _linear,
+    # cubic defaults (backwards-compatible: ease_in/out == cubic)
     "ease_in": _ease_in,
-    "ease-in": _ease_in,
-    "easein": _ease_in,
     "ease_out": _ease_out,
-    "ease-out": _ease_out,
-    "easeout": _ease_out,
     "ease_in_out": _ease_in_out,
-    "ease-in-out": _ease_in_out,
-    "easeinout": _ease_in_out,
     "ease": _ease_in_out,
-    "bounce": _bounce,
+    # quad
+    "ease_in_quad": _ease_in_quad,
+    "ease_out_quad": _ease_out_quad,
+    "ease_in_out_quad": _ease_in_out_quad,
+    # cubic (explicit)
+    "ease_in_cubic": _ease_in_cubic,
+    "ease_out_cubic": _ease_out_cubic,
+    "ease_in_out_cubic": _ease_in_out_cubic,
+    # quart
+    "ease_in_quart": _ease_in_quart,
+    "ease_out_quart": _ease_out_quart,
+    "ease_in_out_quart": _ease_in_out_quart,
+    # quint
+    "ease_in_quint": _ease_in_quint,
+    "ease_out_quint": _ease_out_quint,
+    "ease_in_out_quint": _ease_in_out_quint,
+    # sine
+    "ease_in_sine": _ease_in_sine,
+    "ease_out_sine": _ease_out_sine,
+    "ease_in_out_sine": _ease_in_out_sine,
+    # expo
+    "ease_in_expo": _ease_in_expo,
+    "ease_out_expo": _ease_out_expo,
+    "ease_in_out_expo": _ease_in_out_expo,
+    # circ
+    "ease_in_circ": _ease_in_circ,
+    "ease_out_circ": _ease_out_circ,
+    "ease_in_out_circ": _ease_in_out_circ,
+    # back
+    "ease_in_back": _ease_in_back,
+    "ease_out_back": _ease_out_back,
+    "ease_in_out_back": _ease_in_out_back,
+    "back_out": _ease_out_back,
+    "back_in": _ease_in_back,
+    # elastic
+    "ease_in_elastic": _ease_in_elastic,
+    "ease_out_elastic": _ease_out_elastic,
+    "ease_in_out_elastic": _ease_in_out_elastic,
+    # bounce family
+    "bounce": _ease_out_bounce,
+    "ease_out_bounce": _ease_out_bounce,
+    "ease_in_bounce": _ease_in_bounce,
+    "ease_in_out_bounce": _ease_in_out_bounce,
+    # smoothstep
+    "smooth": _smooth,
+    "smoothstep": _smooth,
 }
+
+def _normalize_easing_key(name: str) -> str:
+    # "ease-in", "ease in", "easeIn", "easein" -> "ease_in"
+    key = str(name).strip().lower().replace("-", "_").replace(" ", "_")
+    if key in EASING_FUNCTIONS:
+        return key
+    nosep = key.replace("_", "")
+    for candidate in EASING_FUNCTIONS:
+        if candidate.replace("_", "") == nosep:
+            return candidate
+    return key
 
 def resolve_easing(name: Optional[str]) -> Callable[[float], float]:
     if not name:
         return _linear
-    key = str(name).strip().lower()
+    key = _normalize_easing_key(name)
     fn = EASING_FUNCTIONS.get(key)
     if fn is None:
         print(f"[Engine] Unknown easing '{name}', falling back to linear.")

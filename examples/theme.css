@@ -1,0 +1,33 @@
+/* ============================================================================
+   theme.css — cascade for "AI BECOMES SMARTER"
+   Imported via: import styles from "theme.css"
+   ========================================================================== */
+
+.hero-title {
+    font-family: "Space Grotesk";
+    font-weight: 700;
+    font-size: 152px;
+    color: #FFFFFF;
+    fx: glow(radius=30, intensity=1.7);
+}
+
+.section-title {
+    font-family: "Space Grotesk";
+    font-weight: 600;
+    font-size: 62px;
+    color: #EAF6FF;
+    fx: drop_shadow(offset_x=0, offset_y=8, blur=18, color=#00000099);
+}
+
+.chip {
+    font-family: "JetBrains Mono";
+    font-size: 32px;
+    color: #00E5FF;
+    fx: glow(radius=14, intensity=1.25);
+}
+
+.watermark {
+    font-family: "JetBrains Mono";
+    font-size: 20px;
+    color: #3A5880;
+}

@@ -173,7 +173,10 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 ```
 
 #### 8. **Easing Functions**
-- `linear`, `ease_in`, `ease_out`, `ease_in_out`, `bounce`
+- `linear`, `ease` (=`ease_in_out` cubic), `ease_in` / `ease_out` / `ease_in_out` (cubic default)
+- `*_quad`, `*_cubic`, `*_quart`, `*_quint`, `*_sine`, `*_expo`, `*_circ`, `*_back`, `*_elastic`, `*_bounce` (each with `ease_in_*`, `ease_out_*`, `ease_in_out_*`)
+- extras: `back_in`, `back_out`, `bounce` (=`ease_out_bounce`), `smooth` / `smoothstep`
+- Example: `render(..., opacity=0.50 -> 0.0, ease=linear)` — swap `linear` for `ease_out_expo`, `ease_in_out_sine`, `ease_out_back`, etc.
 
 #### 9. **Blend Modes** (via fx stack)
 - normal, multiply, screen, overlay, add, difference, lighten, darken, soft_light

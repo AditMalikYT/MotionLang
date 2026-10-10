@@ -1,0 +1,24 @@
+// ============================================================================
+// hud_components.hmg — reusable broadcast-HUD components (module system demo)
+// Imported via: import stat_badge, ticker from "hud_components.hmg"
+// ============================================================================
+
+fn stat_badge(label, value, x, y, t0):
+    render(shape("rect", width=310, height=92, color="#0A1424", radius=16),
+           pos=(x, y), time=[t0, t0 + 5.6],
+           scale=0.85 -> 1.0, ease=ease_out, opacity=0 -> 0.94,
+           fx=[drop_shadow(offset_x=0, offset_y=12, blur=26, color="#000000B0")])
+    render(shape("rect", width=6, height=58, color="#00E5FF", radius=3),
+           pos=(x - 132, y), time=[t0, t0 + 5.6], opacity=0 -> 1, ease=ease_in)
+    render(text(label, size=19, color="#7E97BC", anchor="center"),
+           pos=(x + 16, y - 22), time=[t0, t0 + 5.6], opacity=0 -> 1)
+    render(text(value, size=32, color="#FFFFFF", anchor="center"),
+           pos=(x + 16, y + 18), time=[t0, t0 + 5.6], opacity=0 -> 1,
+           fx=[glow(color="#00E5FF", intensity=0.65, radius=10)])
+export stat_badge
+
+fn ticker(msg, y, t0, t1):
+    render(text(msg, size=21, color="#33507A", anchor="center"),
+           pos=(960, y), time=[t0, t1], opacity=0 -> 0.9,
+           fx=[float_y(distance=5, speed=0.8)])
+export ticker
