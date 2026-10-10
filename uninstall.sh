@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Motion Language (.hmg) Uninstallation Script
-# ==============================================
-# This script removes the Motion Language installation
+# Motion Language (.hmg) Full Uninstallation Script
+# ==================================================
 
 set -e
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -31,55 +29,49 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-print_status "Starting Motion Language uninstallation cleanup..."
+print_status "Starting full system uninstallation of Motion Language..."
 
-# Step 1: Remove virtual environment
-print_status "Removing Python virtual environment..."
+# 1. Remove global source directory & virtual environment (~/.motion_lang_src)
+if [ -d "$HOME/.motion_lang_src" ]; then
+    print_status "Removing ~/.motion_lang_src..."
+    rm -rf "$HOME/.motion_lang_src"
+    print_success "Source directory removed"
+else
+    print_warning "No global source directory found"
+fi
+
+# 2. Remove VS Code / VS Codium extensions
+for EXT_DIR in "$HOME/.vscode/extensions/motion-language-support" "$HOME/.vscode-oss/extensions/motion-language-support"; do
+    if [ -d "$EXT_DIR" ]; then
+        print_status "Removing extension from $EXT_DIR..."
+        rm -rf "$EXT_DIR"
+        print_success "Extension removed"
+    fi
+done
+
+# 3. Clean up global shell aliases from ~/.bashrc and ~/.zshrc
+for PROFILE in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$PROFILE" ]; then
+        if grep -q "Motion Language" "$PROFILE"; then
+            print_status "Cleaning up aliases from $PROFILE..."
+            sed -i '/# Motion Language CLI/d' "$PROFILE"
+            sed -i '/\.motion_lang_src\/\.venv\/bin\/motion/d' "$PROFILE"
+            print_success "Shell profile cleaned"
+        fi
+    fi
+done
+
+# 4. Clean local workspace artifacts (if run inside a project folder)
 if [ -d ".venv" ]; then
     rm -rf .venv
-    print_success "Virtual environment removed"
-else
-    print_warning "No virtual environment found"
 fi
-
-# Step 2: Remove studio node_modules
-print_status "Removing studio node_modules..."
 if [ -d "studio/node_modules" ]; then
     rm -rf studio/node_modules
-    print_success "Studio node_modules removed"
-else
-    print_warning "No studio/node_modules found"
 fi
-
-# Step 3: Remove studio package-lock.json
-if [ -f "studio/package-lock.json" ]; then
-    rm -f studio/package-lock.json
-    print_success "Studio package-lock.json removed"
-fi
-
-# Step 4: Remove output directory
-print_status "Removing output directory..."
 if [ -d "output" ]; then
     rm -rf output
-    print_success "Output directory removed"
-else
-    print_warning "No output directory found"
 fi
 
-# Step 5: Remove cache files
-print_status "Removing cache files..."
-if [ -d ".cache" ]; then
-    rm -rf .cache
-    print_success "Cache directory removed"
-else
-    print_warning "No cache directory found"
-fi
-
-# Step 6: Remove temp files
-print_status "Removing temporary files..."
-rm -f /tmp/test_*.mp4 /tmp/test_*.hmg /tmp/modern_demo*.mp4 2>/dev/null || true
-
-# Final message
 echo ""
-print_success "Motion Language uninstallation complete!"
-print_status "The local workspace has been cleaned up."
+print_success "Motion Language has been completely uninstalled from your system!"
+print_status "Please run: source ~/.bashrc (or restart your terminal) to clear the 'motion' command."

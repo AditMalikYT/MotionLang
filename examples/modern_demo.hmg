@@ -1,60 +1,441 @@
-// Language Configuration
+// ============================================================================
+// FREE CLAUDE CODE? — CINEMATIC SHORT V2
+// Motion Language 1.1 | Modern indentation-based DSL
+// Canvas: 1080 x 1920 | 30 FPS | Duration: 55.8 seconds | 9:16 vertical
+//
+// Design upgrade:
+//   - Editorial, high-contrast typography with Google Fonts fallback
+//   - Persistent technical HUD, animated scan rails, drifting light nodes
+//   - Shot-specific compositions instead of one repeated center card
+//   - Keyframed entrances/exits, glow, pulse, motion blur, chromatic glitch
+//   - Multi-step workflow montage and clean chat-versus-agent comparison
+//   - Final shot returns to the opening composition for a visual loop
+//
+// Run from the Motion Language project:
+//   motion render /path/to/free-claude-code.hmg
+//
+// The visual footage is created from vector shapes and typography. For final
+// publication, place a CURRENT, REAL pricing-page capture at
+// assets/claude_pricing_capture.png and uncomment the optional image render
+// noted in the proof-check scene. Do not present a recreated pricing table as
+// an official screenshot. Add voice/music/SFX in the optional audio layer.
+// ============================================================================
+
 config:
-    resolution = 1280x720
+    resolution = 1080x1920
     fps = 30
-    mode = "render"
 
-// Module Import
-import GlowCard, GlassTitle from "components/ui.hmg"
+// Motion Language 1.1 typography: dynamic Google Font fetch with offline fallback.
+headline_font = load_font("Poppins", weight="bold")
+body_font = load_font("Inter", weight="medium")
+code_font = load_font("JetBrains Mono", weight="medium")
 
-// Global Variables & Operators
-base_duration = 5
-card_scale = 0.8 + 0.1
+// ---------------------------------------------------------------------------
+// SCRIPT / EDIT MAP (voiceover should run continuously; timings are targets)
+// ---------------------------------------------------------------------------
+// [00:00 - 00:01.8] Want Claude Code for FREE?
+// [00:01.8 - 00:03.8] Here's the catch most videos skip.
+// [00:03.8 - 00:06.15] Claude Free can still help you code.
+// [00:06.15 - 00:08.15] Ask for snippets or bug fixes.
+// [00:08.15 - 00:10.15] Build a page, or explain errors.
+// [00:10.15 - 00:12.5] Create files and run code in chat.
+// [00:12.5 - 00:14.5] But that's not Claude Code itself.
+// [00:14.5 - 00:16.85] That coding agent works in your terminal.
+// [00:16.85 - 00:18.65] Anthropic lists Claude Code as—
+// [00:18.65 - 00:20.65] NOT INCLUDED on the Free plan.
+// [00:20.65 - 00:23.0] Pro includes it; Console use needs billing.
+// [00:23.0 - 00:24.5] "Unlimited free access" claims?
+// [00:24.5 - 00:26.5] CHECK FIRST before trusting the headline.
+// [00:26.5 - 00:28.5] A zero-cost option is Claude's chat.
+// [00:28.5 - 00:30.85] Paste a small snippet; explain your goal.
+// [00:30.85 - 00:32.85] Ask for fixes and brief explanations.
+// [00:32.85 - 00:34.85] Copy the change into your project.
+// [00:34.85 - 00:37.2] Then test it and check for errors.
+// [00:37.2 - 00:39.55] Need the terminal agent? Check official pricing.
+// [00:39.55 - 00:41.9] Access and prices change, so verify today.
+// [00:41.9 - 00:43.9] Know which tool you're actually getting.
+// [00:43.9 - 00:45.7] Free Claude can code; but—
+// [00:45.7 - 00:47.5] Claude Code itself is paid.
+// [00:47.5 - 00:49.85] That's what viral posts often leave out.
+// [00:49.85 - 00:52.2] Save this before chasing a free trick.
+// [00:52.2 - 00:54.0] And now, the question remains:
+// [00:54.0 - 00:55.8] Want Claude Code for FREE?
 
-// Custom Function Definition
-fn create_badge(text_val, x, y):
-    bg = shape("rect", width=200, height=60, color="#1e1e2e", radius=12)
-    label = text(text_val, font="Helvetica", size=24, color="#FFFFFF")
-    return layer(z=3):
-        render(bg, pos=(x, y))
-        render(label, pos=(x + 20, y + 15))
-
-// Class Definition (OOP)
-class HeroWidget:
-    fn init(self, title_text, asset_query):
-        self.title = text(title_text, size=48, color="#00E5FF")
-        self.avatar = wiki(asset_query)
-
-    fn build(self, start_t):
-        return layer(z=2):
-            render(self.avatar, time=[start_t, start_t + 4], pos=(450, 200), scale=0.6)
-            render(self.title, time=[start_t + 0.5, start_t + 4], pos=(400, 450), fx=[glow(color="#00E5FF")])
-
-// Instantiation & Usage
-hero = HeroWidget("EAGLE VISION", "eagle")
-
-// Composition Timeline
 scene:
-    // Background loop
-    repeat 3 times as i:
-        bg = shape("rect", width=1280, height=720, color="#0a0a10")
-        layer(z=1):
-            render(bg, time=[i * 2, (i + 1) * 2])
+    // ========================================================================
+    // Z 0 — ATMOSPHERE / TECHNICAL FRAME. Low contrast, never competes with text.
+    // ========================================================================
+    layer(z=0):
+        render(shape("rect", width=1080, height=1920, color="#060910"), time=[0, 55.8])
 
-    // Conditional Layer Logic
-    show_hero = true
-    if show_hero == true:
-        hero.build(start_t=0.5)
-    else:
-        layer(z=2):
-            render(shape("circle", radius=100, color="#FF0055"), time=[0, 5], pos=(540, 260))
+        // Large blurred color fields create depth without external footage.
+        render(shape("circle", width=680, height=680, color="#10334A"), pos=(590, 190), time=[0, 55.8], opacity=0.16, fx=[blur(radius=70), pulse(amount=0.05, speed=0.35)])
+        render(shape("circle", width=550, height=550, color="#23421F"), pos=(-120, 1040), time=[0, 55.8], opacity=0.12, fx=[blur(radius=65), pulse(amount=0.06, speed=0.42)])
+        render(shape("circle", width=330, height=330, color="#29204B"), pos=(710, 1320), time=[0, 55.8], opacity=0.12, fx=[blur(radius=50), float_y(distance=22, speed=0.32)])
 
-    // Functional Component Loop
-    items = ["FAST", "CLEAN", "MOTIONS"]
-    for idx, item in items:
-        create_badge(item, x=100 + (idx * 220), y=600)
+        // Fine grid rails / editorial framing.
+        render(shape("rect", width=2, height=1450, color="#173044"), pos=(63, 236), time=[0, 55.8], opacity=0.42)
+        render(shape("rect", width=2, height=1450, color="#173044"), pos=(1015, 236), time=[0, 55.8], opacity=0.42)
+        render(shape("rect", width=900, height=2, color="#183044"), pos=(90, 292), time=[0, 55.8], opacity=0.65)
+        render(shape("rect", width=900, height=2, color="#183044"), pos=(90, 1534), time=[0, 55.8], opacity=0.65)
+        render(shape("rect", width=400, height=2, color="#37E7FF"), pos=(90, 292), time=[0, 3.8], scale=0.18 -> 1.0, opacity=0.62, fx=[glow(color="#37E7FF", intensity=0.65, radius=12)])
+        render(shape("rect", width=400, height=2, color="#B8FF40"), pos=(590, 1534), time=[26.5, 55.8], scale=0.15 -> 1.0, opacity=0.72, fx=[glow(color="#B8FF40", intensity=0.55, radius=10)])
 
-audio:
-    play(audio("assets/bg_music.mp3"), start=0, volume=0.3)
-    for t in [1.0, 3.0, 5.0]:
-        play(audio("assets/swoosh.wav"), start=t, volume=0.8)
+        // Floating nodes and tiny interface marks, placed away from safe-zone text.
+        render(shape("circle", width=9, height=9, color="#37E7FF"), pos=(130, 420), time=[0, 55.8], opacity=0.72, fx=[float_y(distance=28, speed=0.72), pulse(amount=0.35, speed=1.2), glow(color="#37E7FF", intensity=0.5, radius=8)])
+        render(shape("circle", width=7, height=7, color="#B8FF40"), pos=(925, 480), time=[0, 55.8], opacity=0.76, fx=[float_y(distance=22, speed=0.88), pulse(amount=0.30, speed=1.5)])
+        render(shape("circle", width=8, height=8, color="#37E7FF"), pos=(890, 1390), time=[0, 55.8], opacity=0.62, fx=[float_y(distance=24, speed=0.68), pulse(amount=0.25, speed=1.1)])
+        render(shape("circle", width=6, height=6, color="#B8FF40"), pos=(164, 1450), time=[0, 55.8], opacity=0.64, fx=[float_y(distance=18, speed=0.9)])
+        render(shape("rect", width=28, height=3, color="#31536B"), pos=(100, 330), time=[0, 55.8], opacity=0.8)
+        render(shape("rect", width=3, height=28, color="#31536B"), pos=(100, 330), time=[0, 55.8], opacity=0.8)
+        render(shape("rect", width=28, height=3, color="#31536B"), pos=(950, 1465), time=[0, 55.8], opacity=0.8)
+        render(shape("rect", width=3, height=28, color="#31536B"), pos=(975, 1440), time=[0, 55.8], opacity=0.8)
+
+    // ========================================================================
+    // Z 1 — PERSISTENT SMALL BRANDING / PROGRESS HUD
+    // ========================================================================
+    layer(z=1):
+        render(text("FIELD NOTES  /  AI CODING" , size=22, color="#8197AA", font=code_font), pos=(102, 245), time=[0, 55.8], opacity=0.9)
+        render(text("VOL. 01" , size=21, color="#60778C", font=code_font), pos=(830, 245), time=[0, 55.8], opacity=0.85)
+        render(shape("rect", width=876, height=4, color="#172B3D"), pos=(102, 1588), time=[0, 55.8], opacity=0.9)
+        render(shape("rect", width=876, height=4, color="#37E7FF"), pos=(102, 1588), time=[0, 18.65], scale=0.08 -> 1.0, opacity=0.9, fx=[glow(color="#37E7FF", intensity=0.7, radius=8)])
+        render(shape("rect", width=876, height=4, color="#B8FF40"), pos=(102, 1588), time=[18.65, 41.9], scale=0.08 -> 1.0, opacity=0.9, fx=[glow(color="#B8FF40", intensity=0.7, radius=8)])
+        render(shape("rect", width=876, height=4, color="#FFB84D"), pos=(102, 1588), time=[41.9, 55.8], scale=0.08 -> 1.0, opacity=0.9, fx=[glow(color="#FFB84D", intensity=0.6, radius=8)])
+        render(text("CLAIM  /  CHECK  /  BUILD" , size=21, color="#657C90", font=code_font), pos=(102, 1614), time=[0, 55.8], opacity=0.85)
+        render(text("55.8s  •  9:16" , size=21, color="#657C90", font=code_font), pos=(790, 1614), time=[0, 55.8], opacity=0.85)
+
+    // ========================================================================
+    // Z 2 — SHOT-SPECIFIC VISUALS. Every group uses a new composition.
+    // ========================================================================
+    layer(z=2):
+        // SHOT A / 00:00-01.8 — opening terminal, floating $0 token, fast punch-in.
+        render(shape("rect", width=650, height=288, color="#101A27"), pos=(220, 405) -> (190, 385), time=[0, 1.8], opacity=0.98, scale=0.86 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.55, radius=18), motion_blur(samples=6, direction=0, distance=8)])
+        render(shape("rect", width=650, height=52, color="#192B3D"), pos=(220, 405) -> (190, 385), time=[0, 1.8])
+        render(shape("circle", width=14, height=14, color="#FF5F57"), pos=(248, 424), time=[0, 1.8])
+        render(shape("circle", width=14, height=14, color="#FFBD2E"), pos=(272, 424), time=[0, 1.8])
+        render(shape("circle", width=14, height=14, color="#28C840"), pos=(296, 424), time=[0, 1.8])
+        render(text("~/project  —  zsh" , size=23, color="#92A9BD", font=code_font), pos=(336, 418), time=[0, 1.8])
+        render(text("$ claude" , size=34, color="#B8FF40", font=code_font), pos=(254, 493), time=[0, 1.8], scale=0.85 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.75, radius=10)])
+        render(shape("rect", width=310, height=9, color="#3D7187"), pos=(254, 550), time=[0, 1.8], opacity=0.84)
+        render(shape("rect", width=205, height=9, color="#2C566B"), pos=(254, 581), time=[0, 1.8], opacity=0.84)
+        render(shape("circle", width=160, height=160, color="#B8FF40"), pos=(725, 448) -> (765, 435), time=[0, 1.8], opacity=0.98, scale=0.68 -> 1.0, fx=[pulse(amount=0.08, speed=2.0), glow(color="#B8FF40", intensity=1.5, radius=30)])
+        render(text("$0" , size=74, color="#07100A", font=headline_font), pos=(765, 484), time=[0, 1.8], scale=0.7 -> 1.0)
+
+        // SHOT B / 01.8-03.8 — the catch: red scan slice breaks the opening.
+        render(shape("rect", width=8, height=250, color="#FF4D6D"), pos=(130, 760) -> (130, 810), time=[1.8, 3.8], fx=[flash_in(duration=0.14, color="#FFFFFF"), glow(color="#FF4D6D", intensity=0.7, radius=12)])
+        render(shape("rect", width=780, height=8, color="#FF4D6D"), pos=(150, 800) -> (230, 800), time=[1.8, 3.8], scale=0.2 -> 1.0, opacity=0.92, fx=[motion_blur(samples=5, direction=0, distance=12)])
+        render(shape("rect", width=690, height=110, color="#211722"), pos=(195, 1080) -> (195, 1040), time=[1.8, 3.8], opacity=0.85, fx=[glow(color="#FF4D6D", intensity=0.35, radius=10)])
+        render(text("CLAIM DETECTED" , size=28, color="#FF7891", font=code_font), pos=(235, 1118), time=[1.8, 3.8])
+        render(text("VERIFY BEFORE YOU TRUST" , size=24, color="#A4B4C2", font=code_font), pos=(235, 1165), time=[1.8, 3.8])
+
+        // SHOT C / 03.8-08.15 — chat response and readable coding assistance.
+        render(shape("rect", width=770, height=360, color="#101B29"), pos=(155, 470) -> (155, 510), time=[3.8, 8.15], scale=0.94 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.38, radius=16)])
+        render(shape("rect", width=770, height=54, color="#1B2B3D"), pos=(155, 470) -> (155, 510), time=[3.8, 8.15])
+        render(shape("circle", width=13, height=13, color="#37E7FF"), pos=(181, 490), time=[3.8, 8.15])
+        render(text("CLAUDE CHAT  /  RESPONSE" , size=22, color="#A6BACB", font=code_font), pos=(212, 487), time=[3.8, 8.15])
+        render(shape("rect", width=545, height=10, color="#4B7288"), pos=(198, 560), time=[3.8, 8.15], opacity=0.88)
+        render(shape("rect", width=395, height=10, color="#35586E"), pos=(198, 591), time=[3.8, 8.15], opacity=0.88)
+        render(shape("rect", width=650, height=10, color="#35586E"), pos=(198, 622), time=[3.8, 8.15], opacity=0.88)
+        render(shape("rect", width=245, height=10, color="#B8FF40"), pos=(198, 653), time=[6.15, 8.15], scale=0.12 -> 1.0, opacity=0.95, fx=[glow(color="#B8FF40", intensity=0.55, radius=9)])
+        render(shape("rect", width=650, height=106, color="#0B131E"), pos=(198, 698), time=[3.8, 8.15])
+        render(text("function fixBug()  {  ...  }" , size=25, color="#B8FF40", font=code_font), pos=(222, 735), time=[3.8, 8.15])
+        render(text("// explanation included" , size=22, color="#718EA4", font=code_font), pos=(222, 776), time=[3.8, 8.15])
+
+        // SHOT D / 08.15-10.15 — browser / debug split with a fast lateral reveal.
+        render(shape("rect", width=365, height=244, color="#102333"), pos=(150, 770) -> (125, 790), time=[8.15, 10.15], scale=0.9 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.35, radius=12)])
+        render(shape("rect", width=365, height=40, color="#1D3749"), pos=(150, 770) -> (125, 790), time=[8.15, 10.15])
+        render(shape("circle", width=10, height=10, color="#37E7FF"), pos=(173, 785), time=[8.15, 10.15])
+        render(shape("rect", width=250, height=11, color="#37E7FF"), pos=(175, 842), time=[8.15, 10.15])
+        render(shape("rect", width=190, height=9, color="#608094"), pos=(175, 874), time=[8.15, 10.15])
+        render(shape("rect", width=235, height=9, color="#608094"), pos=(175, 904), time=[8.15, 10.15])
+        render(shape("rect", width=295, height=58, color="#1B443F"), pos=(175, 931), time=[8.15, 10.15], opacity=0.95)
+        render(text("PREVIEW" , size=22, color="#B8FF40", font=code_font), pos=(194, 949), time=[8.15, 10.15])
+        render(shape("rect", width=365, height=244, color="#121C2A"), pos=(565, 770) -> (590, 790), time=[8.15, 10.15], scale=0.9 -> 1.0, fx=[glow(color="#FFB84D", intensity=0.25, radius=12)])
+        render(shape("rect", width=365, height=40, color="#243142"), pos=(565, 770) -> (590, 790), time=[8.15, 10.15])
+        render(text("ERROR LOG" , size=21, color="#B5C4D1", font=code_font), pos=(590, 783), time=[8.15, 10.15])
+        render(shape("rect", width=7, height=120, color="#FFB84D"), pos=(590, 843), time=[8.15, 10.15], fx=[pulse(amount=0.1, speed=2.2)])
+        render(shape("rect", width=265, height=9, color="#687C8B"), pos=(615, 850), time=[8.15, 10.15])
+        render(shape("rect", width=210, height=9, color="#687C8B"), pos=(615, 881), time=[8.15, 10.15])
+        render(shape("rect", width=240, height=9, color="#FFB84D"), pos=(615, 912), time=[8.15, 10.15])
+        render(text("DEBUG" , size=20, color="#FFB84D", font=code_font), pos=(615, 950), time=[8.15, 10.15])
+
+        // SHOT E / 10.15-12.5 — file generation / execution trace.
+        render(shape("rect", width=270, height=270, color="#102230"), pos=(152, 785), time=[10.15, 12.5], fx=[glow(color="#37E7FF", intensity=0.28, radius=14)])
+        render(shape("rect", width=150, height=165, color="#193A4A"), pos=(212, 828), time=[10.15, 12.5], scale=0.85 -> 1.0)
+        render(shape("rect", width=86, height=9, color="#37E7FF"), pos=(242, 865), time=[10.15, 12.5])
+        render(shape("rect", width=86, height=9, color="#587E91"), pos=(242, 895), time=[10.15, 12.5])
+        render(shape("rect", width=63, height=9, color="#587E91"), pos=(242, 925), time=[10.15, 12.5])
+        render(text("FILE" , size=23, color="#9AB3C4", font=code_font), pos=(233, 960), time=[10.15, 12.5])
+        render(shape("rect", width=450, height=270, color="#0D1925"), pos=(470, 785), time=[10.15, 12.5], fx=[glow(color="#B8FF40", intensity=0.25, radius=14)])
+        render(shape("rect", width=450, height=44, color="#1B2D3D"), pos=(470, 785), time=[10.15, 12.5])
+        render(text("RUN OUTPUT" , size=22, color="#A8BDCC", font=code_font), pos=(496, 797), time=[10.15, 12.5])
+        render(text("> build started" , size=23, color="#B8FF40", font=code_font), pos=(500, 858), time=[10.15, 12.5])
+        render(text("> checks passed" , size=23, color="#37E7FF", font=code_font), pos=(500, 905), time=[10.15, 12.5])
+        render(shape("rect", width=275, height=8, color="#B8FF40"), pos=(500, 957), time=[10.15, 12.5], scale=0.08 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.6, radius=7)])
+
+        // SHOT F / 12.5-16.85 — switch from chat to terminal agent; strong scale shift.
+        render(shape("rect", width=800, height=380, color="#101923"), pos=(135, 685) -> (150, 720), time=[12.5, 16.85], scale=0.94 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.38, radius=16), motion_blur(samples=6, direction=0, distance=9)])
+        render(shape("rect", width=800, height=58, color="#203040"), pos=(135, 685) -> (150, 720), time=[12.5, 16.85])
+        render(text("TERMINAL  /  PROJECT ROOT" , size=23, color="#A4B7C7", font=code_font), pos=(184, 701), time=[12.5, 16.85])
+        render(text("$ claude" , size=31, color="#B8FF40", font=code_font), pos=(185, 790), time=[14.5, 16.85], scale=0.85 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.55, radius=9)])
+        render(shape("rect", width=552, height=9, color="#4C7B8D"), pos=(185, 847), time=[12.5, 16.85])
+        render(shape("rect", width=480, height=9, color="#31586D"), pos=(185, 880), time=[12.5, 16.85])
+        render(shape("rect", width=590, height=9, color="#31586D"), pos=(185, 913), time=[12.5, 16.85])
+        render(shape("rect", width=390, height=9, color="#B8FF40"), pos=(185, 946), time=[14.5, 16.85], scale=0.12 -> 1.0)
+        render(shape("rect", width=205, height=380, color="#142434"), pos=(730, 743), time=[12.5, 16.85])
+        render(text("FILES" , size=21, color="#37E7FF", font=code_font), pos=(755, 770), time=[12.5, 16.85])
+        render(text("src/" , size=22, color="#B3C6D4", font=code_font), pos=(755, 819), time=[12.5, 16.85])
+        render(text("app.py" , size=20, color="#819CAE", font=code_font), pos=(772, 859), time=[12.5, 16.85])
+        render(text("main.js" , size=20, color="#819CAE", font=code_font), pos=(772, 898), time=[12.5, 16.85])
+        render(text("README" , size=20, color="#819CAE", font=code_font), pos=(772, 937), time=[12.5, 16.85])
+
+        // SHOT G / 16.85-20.65 — evidence presentation. Use a real screenshot in final edit.
+        render(shape("rect", width=820, height=362, color="#101B28"), pos=(130, 715), time=[16.85, 20.65], scale=0.96 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.32, radius=16)])
+        render(shape("rect", width=820, height=58, color="#1C2D3E"), pos=(130, 715), time=[16.85, 20.65])
+        render(text("SOURCE CHECK" , size=24, color="#D0DEE8", font=code_font), pos=(165, 730), time=[16.85, 20.65])
+        render(text("claude.com/pricing" , size=28, color="#37E7FF", font=code_font), pos=(165, 800), time=[16.85, 20.65])
+        render(shape("rect", width=745, height=2, color="#2D4356"), pos=(165, 852), time=[16.85, 20.65])
+        render(text("FREE PLAN" , size=27, color="#DDE7EE", font=body_font), pos=(175, 878), time=[16.85, 20.65])
+        render(text("CLAUDE CHAT" , size=22, color="#9FB5C6", font=code_font), pos=(175, 925), time=[16.85, 20.65])
+        render(shape("rect", width=285, height=83, color="#182F3B"), pos=(165, 970), time=[16.85, 20.65])
+        render(text("CLAUDE CODE" , size=25, color="#FF7891", font=body_font), pos=(185, 992), time=[16.85, 20.65])
+        render(text("NOT INCLUDED" , size=22, color="#FF7891", font=code_font), pos=(185, 1026), time=[16.85, 20.65])
+        render(shape("rect", width=450, height=6, color="#FF4D6D"), pos=(165, 1073), time=[18.65, 20.65], scale=0.1 -> 1.0, fx=[glow(color="#FF4D6D", intensity=0.85, radius=10)])
+        render(text("ILLUSTRATIVE SUMMARY — VERIFY LIVE PAGE" , size=17, color="#7E96A8", font=code_font), pos=(165, 1100), time=[16.85, 20.65])
+        // OPTIONAL: use your own current capture and position it over the mock proof card.
+        // render(image("assets/claude_pricing_capture.png"), pos=(130, 715), time=[16.85, 20.65], scale=0.96 -> 1.0)
+
+        // SHOT H / 20.65-23.0 — distinct payment route cards.
+        render(shape("rect", width=360, height=210, color="#122433"), pos=(140, 805) -> (125, 805), time=[20.65, 23.0], scale=0.94 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.3, radius=12)])
+        render(shape("rect", width=360, height=12, color="#B8FF40"), pos=(140, 805) -> (125, 805), time=[20.65, 23.0])
+        render(text("PRO" , size=48, color="#B8FF40", font=headline_font), pos=(180, 855), time=[20.65, 23.0])
+        render(text("PAID SUBSCRIPTION" , size=21, color="#A2B7C6", font=code_font), pos=(180, 923), time=[20.65, 23.0])
+        render(shape("rect", width=360, height=210, color="#122433"), pos=(565, 805) -> (580, 805), time=[20.65, 23.0], scale=0.94 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.3, radius=12)])
+        render(shape("rect", width=360, height=12, color="#37E7FF"), pos=(565, 805) -> (580, 805), time=[20.65, 23.0])
+        render(text("CONSOLE / API" , size=32, color="#37E7FF", font=headline_font), pos=(595, 855), time=[20.65, 23.0])
+        render(text("SEPARATE BILLING" , size=21, color="#A2B7C6", font=code_font), pos=(595, 923), time=[20.65, 23.0])
+
+        // SHOT I / 23.0-26.5 — suspect claim, then verification stamp.
+        render(shape("rect", width=790, height=220, color="#1A121D"), pos=(145, 820), time=[23.0, 26.5], fx=[glow(color="#FF4D6D", intensity=0.32, radius=15)])
+        render(shape("rect", width=790, height=8, color="#FF4D6D"), pos=(145, 820), time=[23.0, 24.5], scale=0.12 -> 1.0, fx=[flash_in(duration=0.15, color="#FFFFFF")])
+        render(text("UNLIMITED FREE ACCESS?" , size=48, color="#F5EAF0", font=headline_font), pos=(190, 878), time=[23.0, 24.5], scale=0.9 -> 1.0, fx=[glitch(intensity=0.22, seed=23), chromatic_aberration(offset=2)])
+        render(shape("rect", width=410, height=6, color="#FF4D6D"), pos=(190, 950), time=[23.0, 24.5], fx=[glow(color="#FF4D6D", intensity=0.8, radius=12)])
+        render(shape("circle", width=98, height=98, color="#15382F"), pos=(785, 940), time=[24.5, 26.5], fx=[pulse(amount=0.06, speed=1.7), glow(color="#B8FF40", intensity=0.8, radius=12)])
+        render(text("✓" , size=62, color="#B8FF40", font=headline_font), pos=(810, 957), time=[24.5, 26.5], scale=0.7 -> 1.0)
+        render(text("VERIFY THE SOURCE" , size=27, color="#B8FF40", font=code_font), pos=(190, 1000), time=[24.5, 26.5])
+
+        // SHOT J / 26.5-28.5 — reset to calm, clean free-chat card.
+        render(shape("rect", width=770, height=245, color="#10202D"), pos=(155, 810) -> (155, 790), time=[26.5, 28.5], scale=0.92 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.42, radius=15)])
+        render(shape("rect", width=770, height=45, color="#1B3041"), pos=(155, 810) -> (155, 790), time=[26.5, 28.5])
+        render(text("FREE CHAT  /  $0 PLAN" , size=22, color="#B6C8D5", font=code_font), pos=(188, 821), time=[26.5, 28.5])
+        render(shape("rect", width=610, height=9, color="#527D91"), pos=(193, 884), time=[26.5, 28.5])
+        render(shape("rect", width=470, height=9, color="#365A6F"), pos=(193, 914), time=[26.5, 28.5])
+        render(shape("rect", width=300, height=9, color="#B8FF40"), pos=(193, 944), time=[26.5, 28.5], scale=0.15 -> 1.0)
+
+        // SHOT K / 28.5-30.85 — prompt entry; cursor sweeps into the request.
+        render(shape("rect", width=790, height=230, color="#0E1A27"), pos=(145, 805), time=[28.5, 30.85], fx=[glow(color="#37E7FF", intensity=0.25, radius=13)])
+        render(shape("rect", width=790, height=46, color="#1C2E3E"), pos=(145, 805), time=[28.5, 30.85])
+        render(text("YOUR PROMPT" , size=22, color="#B4C5D2", font=code_font), pos=(178, 817), time=[28.5, 30.85])
+        render(text("> explain this bug and suggest a fix" , size=24, color="#B8FF40", font=code_font), pos=(180, 884), time=[28.5, 30.85], scale=0.88 -> 1.0)
+        render(shape("rect", width=470, height=8, color="#46687C"), pos=(180, 933), time=[28.5, 30.85])
+        render(shape("rect", width=285, height=8, color="#46687C"), pos=(180, 963), time=[28.5, 30.85])
+
+        // SHOT L / 30.85-32.85 — before/after code diff.
+        render(shape("rect", width=355, height=245, color="#171C2A"), pos=(140, 805) -> (120, 805), time=[30.85, 32.85], scale=0.93 -> 1.0)
+        render(shape("rect", width=355, height=42, color="#302434"), pos=(140, 805) -> (120, 805), time=[30.85, 32.85])
+        render(text("BEFORE" , size=22, color="#FF93A5", font=code_font), pos=(169, 815), time=[30.85, 32.85])
+        render(shape("rect", width=235, height=9, color="#80505D"), pos=(168, 875), time=[30.85, 32.85])
+        render(shape("rect", width=195, height=9, color="#80505D"), pos=(168, 905), time=[30.85, 32.85])
+        render(shape("rect", width=255, height=9, color="#FF4D6D"), pos=(168, 935), time=[30.85, 32.85])
+        render(shape("rect", width=355, height=245, color="#112A28"), pos=(585, 805) -> (605, 805), time=[30.85, 32.85], scale=0.93 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.28, radius=12)])
+        render(shape("rect", width=355, height=42, color="#1D413B"), pos=(585, 805) -> (605, 805), time=[30.85, 32.85])
+        render(text("AFTER" , size=22, color="#B8FF40", font=code_font), pos=(615, 815), time=[30.85, 32.85])
+        render(shape("rect", width=245, height=9, color="#B8FF40"), pos=(615, 875), time=[30.85, 32.85])
+        render(shape("rect", width=215, height=9, color="#4D8D8A"), pos=(615, 905), time=[30.85, 32.85])
+        render(shape("rect", width=185, height=9, color="#4D8D8A"), pos=(615, 935), time=[30.85, 32.85])
+
+        // SHOT M / 32.85-34.85 — copy flow, code card travels into project pane.
+        render(shape("rect", width=290, height=200, color="#102130"), pos=(155, 825) -> (250, 825), time=[32.85, 34.85], scale=0.9 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.32, radius=11)])
+        render(text("CHAT" , size=24, color="#37E7FF", font=code_font), pos=(190, 847), time=[32.85, 34.85])
+        render(shape("rect", width=192, height=8, color="#6D91A3"), pos=(190, 900), time=[32.85, 34.85])
+        render(shape("rect", width=150, height=8, color="#B8FF40"), pos=(190, 930), time=[32.85, 34.85])
+        render(shape("rect", width=125, height=70, color="#B8FF40"), pos=(455, 890) -> (500, 890), time=[32.85, 34.85], scale=0.75 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.55, radius=12)])
+        render(text("→" , size=58, color="#07100A", font=headline_font), pos=(487, 889), time=[32.85, 34.85])
+        render(shape("rect", width=290, height=200, color="#10281F"), pos=(635, 825) -> (730, 825), time=[32.85, 34.85], scale=0.9 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.3, radius=11)])
+        render(text("PROJECT" , size=24, color="#B8FF40", font=code_font), pos=(760, 847), time=[32.85, 34.85])
+        render(shape("rect", width=190, height=8, color="#6D9580"), pos=(760, 900), time=[32.85, 34.85])
+        render(shape("rect", width=155, height=8, color="#B8FF40"), pos=(760, 930), time=[32.85, 34.85])
+
+        // SHOT N / 34.85-37.2 — test pass, with circular progress motif.
+        render(shape("circle", width=230, height=230, color="#153B32"), pos=(160, 820), time=[34.85, 37.2], fx=[pulse(amount=0.05, speed=1.7), glow(color="#B8FF40", intensity=0.65, radius=16)])
+        render(text("✓" , size=126, color="#B8FF40", font=headline_font), pos=(215, 855), time=[34.85, 37.2], scale=0.72 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.55, radius=12)])
+        render(shape("rect", width=475, height=250, color="#10202C"), pos=(455, 810), time=[34.85, 37.2])
+        render(text("TEST RUN" , size=25, color="#D0DDE6", font=code_font), pos=(490, 835), time=[34.85, 37.2])
+        render(text("> lint" , size=24, color="#B8FF40", font=code_font), pos=(490, 890), time=[34.85, 37.2])
+        render(text("> test" , size=24, color="#37E7FF", font=code_font), pos=(490, 932), time=[34.85, 37.2])
+        render(shape("rect", width=350, height=8, color="#B8FF40"), pos=(490, 980), time=[34.85, 37.2], scale=0.08 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.55, radius=7)])
+
+        // SHOT O / 37.2-41.9 — source lookup / refresh treatment.
+        render(shape("rect", width=800, height=260, color="#101C29"), pos=(140, 800), time=[37.2, 41.9], scale=0.96 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.35, radius=14)])
+        render(shape("rect", width=800, height=50, color="#1D2E40"), pos=(140, 800), time=[37.2, 41.9])
+        render(text("BROWSER  /  OFFICIAL SOURCE" , size=22, color="#B6C8D4", font=code_font), pos=(174, 813), time=[37.2, 41.9])
+        render(text("https://claude.com/pricing" , size=29, color="#37E7FF", font=code_font), pos=(180, 884), time=[37.2, 41.9])
+        render(shape("rect", width=665, height=2, color="#345165"), pos=(180, 934), time=[37.2, 41.9])
+        render(text("Check current plan details" , size=23, color="#A4BAC9", font=body_font), pos=(180, 958), time=[37.2, 41.9])
+        render(shape("circle", width=80, height=80, color="#173C35"), pos=(795, 920), time=[39.55, 41.9], fx=[pulse(amount=0.06, speed=1.8), glow(color="#B8FF40", intensity=0.45, radius=12)])
+        render(text("↻" , size=60, color="#B8FF40", font=headline_font), pos=(812, 927), time=[39.55, 41.9], scale=0.82 -> 1.0)
+
+        // SHOT P / 41.9-45.7 — balanced chat vs terminal agent comparison.
+        render(shape("rect", width=365, height=280, color="#102432"), pos=(125, 790) -> (110, 790), time=[41.9, 45.7], scale=0.94 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.32, radius=14)])
+        render(shape("rect", width=365, height=12, color="#37E7FF"), pos=(125, 790) -> (110, 790), time=[41.9, 45.7])
+        render(text("CHAT" , size=43, color="#37E7FF", font=headline_font), pos=(165, 845), time=[41.9, 45.7])
+        render(text("BROWSER" , size=21, color="#A1B7C6", font=code_font), pos=(165, 904), time=[41.9, 45.7])
+        render(shape("rect", width=250, height=8, color="#5A8195"), pos=(165, 954), time=[41.9, 45.7])
+        render(shape("rect", width=190, height=8, color="#B8FF40"), pos=(165, 983), time=[41.9, 45.7])
+        render(shape("rect", width=365, height=280, color="#142A26"), pos=(590, 790) -> (605, 790), time=[41.9, 45.7], scale=0.94 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.32, radius=14)])
+        render(shape("rect", width=365, height=12, color="#B8FF40"), pos=(590, 790) -> (605, 790), time=[41.9, 45.7])
+        render(text("CODE AGENT" , size=33, color="#B8FF40", font=headline_font), pos=(625, 845), time=[41.9, 45.7])
+        render(text("TERMINAL" , size=21, color="#A1B7C6", font=code_font), pos=(625, 904), time=[41.9, 45.7])
+        render(shape("rect", width=245, height=8, color="#6CA49B"), pos=(625, 954), time=[41.9, 45.7])
+        render(shape("rect", width=210, height=8, color="#B8FF40"), pos=(625, 983), time=[41.9, 45.7])
+
+        // SHOT Q / 45.7-49.85 — truth stamp / save-card motion.
+        render(shape("rect", width=790, height=12, color="#FFB84D"), pos=(145, 820), time=[45.7, 47.5], scale=0.12 -> 1.0, fx=[glow(color="#FFB84D", intensity=0.65, radius=12)])
+        render(shape("rect", width=790, height=190, color="#1B1A18"), pos=(145, 840), time=[45.7, 47.5], opacity=0.94)
+        render(text("CLAUDE CODE" , size=56, color="#F5F0E9", font=headline_font), pos=(190, 875), time=[45.7, 47.5], scale=0.9 -> 1.0)
+        render(text("PAID ACCESS" , size=34, color="#FFB84D", font=code_font), pos=(190, 954), time=[45.7, 47.5])
+        render(shape("rect", width=660, height=170, color="#11251F"), pos=(205, 840), time=[47.5, 49.85], scale=0.92 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.4, radius=14)])
+        render(shape("rect", width=10, height=170, color="#B8FF40"), pos=(205, 840), time=[47.5, 49.85])
+        render(text("THE PART THEY SKIP" , size=40, color="#B8FF40", font=headline_font), pos=(250, 892), time=[47.5, 49.85], scale=0.9 -> 1.0)
+        render(text("SAVE THIS EXPLAINER" , size=23, color="#AFC6BE", font=code_font), pos=(250, 955), time=[47.5, 49.85])
+        render(shape("rect", width=90, height=130, color="#B8FF40"), pos=(790, 855), time=[47.5, 49.85], scale=0.8 -> 1.0, fx=[pulse(amount=0.05, speed=1.5), glow(color="#B8FF40", intensity=0.55, radius=13)])
+        render(shape("rect", width=34, height=58, color="#07100A"), pos=(818, 878), time=[47.5, 49.85])
+        render(shape("rect", width=52, height=20, color="#07100A"), pos=(809, 949), time=[47.5, 49.85])
+
+        // SHOT R / 49.85-55.8 — build the loop: darken, reduce UI, match the opener.
+        render(shape("circle", width=410, height=410, color="#B8FF40"), pos=(330, 740), time=[49.85, 55.8], opacity=0.07, fx=[pulse(amount=0.08, speed=1.6), blur(radius=40)])
+        render(shape("rect", width=650, height=288, color="#101A27"), pos=(190, 385), time=[52.2, 55.8], opacity=0.98, scale=0.96 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.55, radius=18)])
+        render(shape("rect", width=650, height=52, color="#192B3D"), pos=(190, 385), time=[52.2, 55.8])
+        render(shape("circle", width=14, height=14, color="#FF5F57"), pos=(218, 404), time=[52.2, 55.8])
+        render(shape("circle", width=14, height=14, color="#FFBD2E"), pos=(242, 404), time=[52.2, 55.8])
+        render(shape("circle", width=14, height=14, color="#28C840"), pos=(266, 404), time=[52.2, 55.8])
+        render(text("~/project  —  zsh" , size=23, color="#92A9BD", font=code_font), pos=(306, 398), time=[52.2, 55.8])
+        render(text("$ claude" , size=34, color="#B8FF40", font=code_font), pos=(224, 473), time=[52.2, 55.8])
+        render(shape("rect", width=310, height=9, color="#3D7187"), pos=(224, 530), time=[52.2, 55.8], opacity=0.84)
+        render(shape("rect", width=205, height=9, color="#2C566B"), pos=(224, 561), time=[52.2, 55.8], opacity=0.84)
+        render(shape("circle", width=160, height=160, color="#B8FF40"), pos=(765, 435), time=[52.2, 55.8], opacity=0.98, scale=0.86 -> 1.0, fx=[pulse(amount=0.06, speed=2.0), glow(color="#B8FF40", intensity=1.5, radius=30)])
+        render(text("$0" , size=74, color="#07100A", font=headline_font), pos=(805, 471), time=[52.2, 55.8], scale=0.85 -> 1.0)
+
+    // ========================================================================
+    // Z 3 — KINETIC CAPTIONS. Two-level typography, punchy timing, safe-zone.
+    // ========================================================================
+    layer(z=3):
+        // Hook: lock the first and final frame typography to the same positions.
+        render(text("CLAUDE CODE" , size=76, color="#FFFFFF", font=headline_font), pos=(152, 900), time=[0, 1.8], scale=0.82 -> 1.0, fx=[glow(color="#FFFFFF", intensity=0.28, radius=10), motion_blur(samples=5, direction=0, distance=6)])
+        render(text("FOR FREE?" , size=112, color="#B8FF40", font=headline_font), pos=(178, 998), time=[0, 1.8], scale=0.78 -> 1.0, fx=[glow(color="#B8FF40", intensity=1.05, radius=22)])
+
+        // The catch.
+        render(text("HERE'S THE" , size=61, color="#F2F6F9", font=headline_font), pos=(240, 890), time=[1.8, 3.8], scale=0.9 -> 1.0)
+        render(text("CATCH" , size=112, color="#FF4D6D", font=headline_font), pos=(332, 978), time=[1.8, 3.8], scale=0.82 -> 1.0, fx=[glow(color="#FF4D6D", intensity=0.8, radius=18), chromatic_aberration(offset=2)])
+
+        // Claude Free can help you code.
+        render(text("CLAUDE FREE" , size=78, color="#B8FF40", font=headline_font), pos=(185, 885), time=[3.8, 6.15], scale=0.86 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.65, radius=13)])
+        render(text("CAN HELP YOU CODE" , size=42, color="#F4F7FA", font=body_font), pos=(188, 984), time=[3.8, 6.15])
+
+        // Snippets and bug fixes.
+        render(text("SNIPPETS" , size=77, color="#F4F7FA", font=headline_font), pos=(275, 890), time=[6.15, 8.15], scale=0.9 -> 1.0)
+        render(text("+ BUG FIXES" , size=78, color="#37E7FF", font=headline_font), pos=(225, 984), time=[6.15, 8.15], scale=0.86 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.65, radius=13)])
+
+        // Build a page and explain errors.
+        render(text("BUILD A PAGE" , size=66, color="#F4F7FA", font=headline_font), pos=(183, 1090), time=[8.15, 10.15], scale=0.9 -> 1.0)
+        render(text("EXPLAIN ERRORS" , size=56, color="#FFB84D", font=headline_font), pos=(168, 1170), time=[8.15, 10.15])
+
+        // Files + code.
+        render(text("FILES + CODE" , size=82, color="#B8FF40", font=headline_font), pos=(167, 1090), time=[10.15, 12.5], scale=0.85 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.7, radius=14)])
+        render(text("INSIDE CHAT" , size=39, color="#F4F7FA", font=code_font), pos=(292, 1185), time=[10.15, 12.5])
+
+        // Not the same tool.
+        render(text("NOT THE SAME" , size=71, color="#F4F7FA", font=headline_font), pos=(184, 1110), time=[12.5, 14.5], scale=0.87 -> 1.0)
+        render(text("TOOL" , size=102, color="#FFB84D", font=headline_font), pos=(380, 1190), time=[12.5, 14.5], fx=[glow(color="#FFB84D", intensity=0.55, radius=12)])
+
+        // Terminal agent.
+        render(text("RUNS IN YOUR" , size=55, color="#F4F7FA", font=headline_font), pos=(228, 1130), time=[14.5, 16.85])
+        render(text("TERMINAL" , size=102, color="#B8FF40", font=headline_font), pos=(240, 1210), time=[14.5, 16.85], scale=0.82 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.85, radius=17)])
+
+        // Official check, then plan distinction.
+        render(text("OFFICIAL PRICING" , size=58, color="#F4F7FA", font=headline_font), pos=(165, 1150), time=[16.85, 18.65], scale=0.9 -> 1.0)
+        render(text("CHECK THE PLAN" , size=42, color="#37E7FF", font=code_font), pos=(244, 1230), time=[16.85, 18.65])
+        render(text("NOT INCLUDED" , size=73, color="#FF4D6D", font=headline_font), pos=(148, 1140), time=[18.65, 20.65], scale=0.83 -> 1.0, fx=[glow(color="#FF4D6D", intensity=0.9, radius=18), chromatic_aberration(offset=2)])
+        render(text("ON THE FREE PLAN" , size=41, color="#F4F7FA", font=body_font), pos=(214, 1235), time=[18.65, 20.65])
+
+        // Paid plan / API billing.
+        render(text("PRO PLAN" , size=66, color="#B8FF40", font=headline_font), pos=(235, 1100), time=[20.65, 23.0], scale=0.9 -> 1.0)
+        render(text("CONSOLE = API BILLING" , size=38, color="#F4F7FA", font=code_font), pos=(160, 1180), time=[20.65, 23.0])
+
+        // Scam-like claim / verify.
+        render(text("UNLIMITED" , size=77, color="#F4F7FA", font=headline_font), pos=(242, 1120), time=[23.0, 24.5], scale=0.86 -> 1.0, fx=[glitch(intensity=0.18, seed=7)])
+        render(text("FREE?" , size=108, color="#FF4D6D", font=headline_font), pos=(330, 1200), time=[23.0, 24.5], scale=0.8 -> 1.0, fx=[glow(color="#FF4D6D", intensity=0.8, radius=16)])
+        render(text("CHECK FIRST" , size=79, color="#B8FF40", font=headline_font), pos=(184, 1130), time=[24.5, 26.5], scale=0.86 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.75, radius=16)])
+        render(text("BEFORE YOU TRUST IT" , size=34, color="#F4F7FA", font=code_font), pos=(202, 1220), time=[24.5, 26.5])
+
+        // Free chat alternative.
+        render(text("FREE CHAT" , size=83, color="#37E7FF", font=headline_font), pos=(220, 1115), time=[26.5, 28.5], scale=0.86 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.55, radius=14)])
+        render(text("A ZERO-COST OPTION" , size=36, color="#F4F7FA", font=body_font), pos=(218, 1205), time=[26.5, 28.5])
+
+        // Paste the snippet.
+        render(text("PASTE A" , size=59, color="#F4F7FA", font=headline_font), pos=(320, 1110), time=[28.5, 30.85])
+        render(text("SNIPPET" , size=92, color="#B8FF40", font=headline_font), pos=(275, 1192), time=[28.5, 30.85], scale=0.84 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.65, radius=14)])
+
+        // Fix and explain.
+        render(text("FIX IT" , size=82, color="#B8FF40", font=headline_font), pos=(315, 1115), time=[30.85, 32.85], scale=0.86 -> 1.0)
+        render(text("EXPLAIN WHY" , size=53, color="#F4F7FA", font=body_font), pos=(247, 1200), time=[30.85, 32.85])
+
+        // Copy to project.
+        render(text("COPY THE" , size=61, color="#F4F7FA", font=headline_font), pos=(292, 1110), time=[32.85, 34.85])
+        render(text("CHANGE" , size=99, color="#37E7FF", font=headline_font), pos=(290, 1190), time=[32.85, 34.85], scale=0.85 -> 1.0, fx=[glow(color="#37E7FF", intensity=0.65, radius=14)])
+
+        // Test.
+        render(text("TEST IT" , size=98, color="#B8FF40", font=headline_font), pos=(282, 1120), time=[34.85, 37.2], scale=0.83 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.8, radius=17)])
+        render(text("CHECK THE OUTPUT" , size=39, color="#F4F7FA", font=code_font), pos=(215, 1220), time=[34.85, 37.2])
+
+        // Verify source.
+        render(text("CHECK OFFICIAL" , size=57, color="#F4F7FA", font=headline_font), pos=(197, 1120), time=[37.2, 39.55])
+        render(text("PRICING" , size=87, color="#37E7FF", font=headline_font), pos=(307, 1200), time=[37.2, 39.55], scale=0.86 -> 1.0)
+        render(text("VERIFY" , size=82, color="#F4F7FA", font=headline_font), pos=(315, 1110), time=[39.55, 41.9], scale=0.88 -> 1.0)
+        render(text("TODAY" , size=98, color="#B8FF40", font=headline_font), pos=(320, 1195), time=[39.55, 41.9], scale=0.82 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.75, radius=16)])
+
+        // Comparison.
+        render(text("KNOW YOUR" , size=63, color="#F4F7FA", font=headline_font), pos=(270, 1115), time=[41.9, 43.9])
+        render(text("TOOL" , size=94, color="#37E7FF", font=headline_font), pos=(380, 1195), time=[41.9, 43.9], scale=0.86 -> 1.0)
+        render(text("FREE CHAT" , size=65, color="#37E7FF", font=headline_font), pos=(220, 1120), time=[43.9, 45.7], scale=0.9 -> 1.0)
+        render(text("≠ CODE AGENT" , size=58, color="#B8FF40", font=headline_font), pos=(180, 1200), time=[43.9, 45.7])
+        render(text("CLAUDE CODE" , size=60, color="#F4F7FA", font=headline_font), pos=(185, 1120), time=[45.7, 47.5])
+        render(text("REQUIRES PAID ACCESS" , size=42, color="#FFB84D", font=code_font), pos=(158, 1200), time=[45.7, 47.5], scale=0.9 -> 1.0)
+
+        // Save call to action.
+        render(text("THE PART" , size=62, color="#F4F7FA", font=headline_font), pos=(305, 1110), time=[47.5, 49.85])
+        render(text("THEY SKIP" , size=82, color="#B8FF40", font=headline_font), pos=(265, 1190), time=[47.5, 49.85], scale=0.86 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.72, radius=16)])
+        render(text("SAVE THIS" , size=88, color="#B8FF40", font=headline_font), pos=(235, 1130), time=[49.85, 52.2], scale=0.84 -> 1.0, fx=[glow(color="#B8FF40", intensity=0.8, radius=17)])
+
+        // Loop setup and duplicated hook wording.
+        render(text("ONE LAST" , size=61, color="#F4F7FA", font=headline_font), pos=(302, 1110), time=[52.2, 54.0])
+        render(text("QUESTION..." , size=80, color="#37E7FF", font=headline_font), pos=(240, 1194), time=[52.2, 54.0], scale=0.88 -> 1.0)
+        render(text("CLAUDE CODE" , size=76, color="#FFFFFF", font=headline_font), pos=(152, 900), time=[54.0, 55.8], scale=0.82 -> 1.0, fx=[glow(color="#FFFFFF", intensity=0.28, radius=10)])
+        render(text("FOR FREE?" , size=112, color="#B8FF40", font=headline_font), pos=(178, 998), time=[54.0, 55.8], scale=0.78 -> 1.0, fx=[glow(color="#B8FF40", intensity=1.05, radius=22)])
+
+    // ========================================================================
+    // Z 4 — OPTIONAL AUDIO. Uncomment assets after adding them to your project.
+    // Suggested bed: kinetic tech / dark synthwave, 136 BPM, mixed under VO.
+    // ========================================================================
+    layer(z=4):
+        // Voiceover: clean, upbeat, compressed, continuous read at ~170-176 WPM.
+        // render(audio("assets/claude_code_voiceover.wav"), time=[0, 55.8])
+        // Licensed BGM, ducked beneath the narration in your final mix.
+        // render(audio("assets/kinetic_tech_bgm.wav"), time=[0, 55.8])
+        // Place separate short, licensed effects at edit points as required.
+        // render(audio("assets/hook_impact.wav"), time=[0, 0.45])
+        // render(audio("assets/transition_whoosh.wav"), time=[1.6, 2.1])
+        // render(audio("assets/plan_warning.wav"), time=[18.55, 19.15])
+        // render(audio("assets/verification_ping.wav"), time=[24.35, 24.85])
+        // render(audio("assets/test_pass.wav"), time=[35.0, 35.5])
+        // render(audio("assets/loop_impact.wav"), time=[54.0, 55.8])

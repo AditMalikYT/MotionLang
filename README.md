@@ -52,12 +52,17 @@ curl -fsSL https://raw.githubusercontent.com/AditMalikYT/MotionLang/main/uninsta
 ```bash
 motion examples/modern_demo.hmg --render --output output/modern_demo.mp4  # render MP4
 motion examples/modern_demo.hmg --preview                          # native preview
-motion examples/modern_demo.hmg --studio                           # export + Remotion editor
-motion examples/demo.hmg --output output/demo.mp4                  # legacy brace syntax
+motion examples/modern_demo.hmg --studio                           # export + auto-launch editor
+motion examples/modern_demo.hmg --studio --no-launch               # export only
+motion update                                                      # git pull + reinstall latest
+motion --update                                                    # same as above
+motion -v                                                          # print version
 ```
 
 > `--render` forces MP4 output even if the script's `config:` sets
-> `mode = "preview"`.
+> `mode = "preview"`. `--studio` opens the editor at
+> http://localhost:5173 automatically (export it first with `--no-launch`
+> if you only need the JSON).
 
 Open the studio:
 
@@ -83,8 +88,8 @@ motion_lang/
   shapes.py      # shape primitives
   style.py       # CSS stylesheet support
   export.py      # timeline -> composition.json (for the studio)
-  cli.py         # `motion` command
-studio/          # Remotion + React real-time editor
+  cli.py         # `motion` command: render/preview/studio/update
+studio/          # Remotion + React real-time editor (+ sync/render API)
 examples/        # .hmg scripts + components + styles
 docs/            # DSL specification
 tests/           # language + AE feature test suites

@@ -51,7 +51,9 @@ motion_lang/
 ├── studio/                     # Remotion-based web editor
 │   ├── package.json            # Node.js project configuration
 │   ├── README.md               # Studio setup & usage
-│   └── src/                    # React + Remotion source
+│   ├── vite-plugin-motion-api.ts # Dev-server backend: /api/composition, /api/render, /api/download
+│   └── src/                    # React + Remotion source (spacebar play/pause,
+│                               # canvas drag-reposition, Render Video button)
 │
 ├── docs/                       # Documentation
 │   └── DSL_SPEC.md             # Full language specification
@@ -221,8 +223,12 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 - Frame-accurate specification export
 
 ### 8. **CLI (cli.py)**
-- `motion` command entry point
-- Modes: render, preview, studio
+- `motion` command entry point (argparse)
+- Modes: render, preview, studio (`--no-launch` exports JSON without serving)
+- `motion update`: `git pull --ff-only` the checkout (running copy preferred,
+  `~/.motion_lang_src` fallback) + `pip install -e .`
+- `--studio` auto-launches the Remotion dev server (`npm run dev`) and opens
+  the browser; `--debug` prints full tracebacks
 - Configuration management
 - File watching & development server
 
