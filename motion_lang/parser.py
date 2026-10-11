@@ -801,7 +801,9 @@ def _extract_option_tuples(stmt_text: str):
 def run_script(file_path: str, output_path: str = "output/rendered.mp4",
                mode_override: str = None, use_cache: bool = True,
                max_workers: int = 4, emit_json: str = None,
-               skip_build: bool = False):
+               skip_build: bool = False, use_gpu: bool = False,
+               gpu_codec: str = "h264_nvenc", gpu_preset: str = "p4",
+               gpu_bitrate=None, gpu_cq=None, threads: int = None):
     import os as _os
     with open(file_path, "r") as f:
         code = f.read()
@@ -812,7 +814,11 @@ def run_script(file_path: str, output_path: str = "output/rendered.mp4",
         return run_modern_script(file_path, code, output_path=output_path,
                                  mode_override=mode_override,
                                  use_cache=use_cache, max_workers=max_workers,
-                                 emit_json=emit_json, skip_build=skip_build)
+                                 emit_json=emit_json, skip_build=skip_build,
+                                 use_gpu=use_gpu, gpu_codec=gpu_codec,
+                                 gpu_preset=gpu_preset,
+                                 gpu_bitrate=gpu_bitrate, gpu_cq=gpu_cq,
+                                 threads=threads)
     if emit_json:
         print("[DSL Warning] --emit-json only supports the modern syntax "
               "(config:/fn/class/scene:).")
@@ -924,4 +930,7 @@ def run_script(file_path: str, output_path: str = "output/rendered.mp4",
                     print(f"[DSL Warning] play() references unknown/non-audio asset '{aid}'.")
     if mode_override:
         interpreter.compositor.mode = mode_override
-    interpreter.compositor.build(output_path)
+    interpreter.compositor.build(output_path, use_gpu=use_gpu,
+                                 gpu_codec=gpu_codec, gpu_preset=gpu_preset,
+                                 gpu_bitrate=gpu_bitrate, gpu_cq=gpu_cq,
+                                 threads=threads)

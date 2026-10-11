@@ -1743,7 +1743,10 @@ class Compositor:
         except Exception:
             pass
 
-    def build(self, output_path: str = "output/rendered.mp4"):
+    def build(self, output_path: str = "output/rendered.mp4",
+                use_gpu: bool = False, gpu_codec: str = "h264_nvenc",
+                gpu_preset: str = "p4", gpu_bitrate=None, gpu_cq=None,
+                threads: int = None):
         self.layers.sort(key=lambda x: x[0])
         sorted_clips = [clip for z, clip in self.layers]
         # Explicit opaque background: video output has no alpha, so this avoids
@@ -1771,5 +1774,41 @@ class Compositor:
             except Exception as e:
                 print(f"[Preview Error] {e}")
         else:
-            print(f"[Engine] Rendering video + audio to {output_path}...")
-            final_video.write_videofile(output_path, fps=self.fps, codec="libx264", audio_codec="aac", logger="bar")
+            from motion_lang.gpu import (patched_ffmpeg_popen,
+                                            select_render_codec)
+            sel = select_render_codec(use_gpu, gpu_codec,
+                                      gpu_preset=gpu_preset,
+                                      gpu_bitrate=gpu_bitrate, gpu_cq=gpu_cq)
+            if sel["gpu"]:
+                print(f"[Engine] Rendering video + audio to {output_path} "
+                      f"[GPU: {sel['message']}]...")
+            else:
+                if use_gpu:
+                    print(f"[GPU] {sel['message']}")
+                print(f"[Engine] Rendering video + audio to {output_path} "
+                      f"[CPU: {sel['codec']}]...")
+            kwargs = dict(fps=self.fps, codec=sel["codec"],
+                          preset=sel.get("preset") or "medium",
+                          audio_codec="aac", logger="bar")
+            if sel.get("ffmpeg_params"):
+                kwargs["ffmpeg_params"] = sel["ffmpeg_params"]
+            if threads:
+                kwargs["threads"] = int(threads)
+            try:
+                if sel["gpu"]:
+                    with patched_ffmpeg_popen():
+                        final_video.write_videofile(output_path, **kwargs)
+                else:
+                    final_video.write_videofile(output_path, **kwargs)
+            except Exception as exc:
+                if sel["gpu"]:
+                    print(f"[GPU] NVENC encode failed ({exc}); "
+                          f"retrying on CPU (libx264)...")
+                    kwargs = dict(fps=self.fps, codec="libx264",
+                                  preset="medium",
+                                  audio_codec="aac", logger="bar")
+                    if threads:
+                        kwargs["threads"] = int(threads)
+                    final_video.write_videofile(output_path, **kwargs)
+                else:
+                    raise

@@ -540,7 +540,9 @@ class Evaluator:
         self.use_cache = use_cache
         self.max_workers = max_workers
         self.module_mode = module_mode
-        self.config = {"width": 1280, "height": 720, "fps": 30, "mode": "render"}
+        self.config = {"width": 1280, "height": 720, "fps": 30, "mode": "render",
+                       "gpu": False, "gpu_codec": "h264_nvenc",
+                       "gpu_preset": "p4", "gpu_bitrate": None}
         self.compositor: Optional[Compositor] = None
         self.layer_stack: List[Layer] = []
         self.exports: List[str] = []
@@ -615,6 +617,15 @@ class Evaluator:
                     self.config["fps"] = int(val)
                 elif name == "mode":
                     self.config["mode"] = str(val)
+                elif name == "gpu":
+                    self.config["gpu"] = bool(val) if isinstance(val, bool) \
+                        else str(val).lower() in ("1", "true", "yes", "on", "gpu", "nvenc")
+                elif name == "gpu_codec":
+                    self.config["gpu_codec"] = str(val)
+                elif name == "gpu_preset":
+                    self.config["gpu_preset"] = str(val)
+                elif name == "gpu_bitrate":
+                    self.config["gpu_bitrate"] = str(val)
         # If a stylesheet import already materialised the compositor, keep it
         # in sync while nothing has been committed to it yet.
         comp = self.compositor
@@ -2044,7 +2055,10 @@ def run_modern_script(file_path: str, code: str,
                       output_path: str = "output/rendered.mp4",
                       mode_override: str = None, use_cache: bool = True,
                       max_workers: int = 4, emit_json: str = None,
-                      skip_build: bool = False):
+                      skip_build: bool = False, use_gpu: bool = False,
+                      gpu_codec: str = "h264_nvenc",
+                      gpu_preset: str = "p4", gpu_bitrate=None,
+                      gpu_cq=None, threads: int = None):
     print(f"[DSL Compiler] Parsing {file_path} (modern syntax)...")
     parser = build_lang_parser()
     parse_src = code if code.endswith("\n") else code + "\n"
@@ -2073,5 +2087,18 @@ def run_modern_script(file_path: str, code: str,
         print("[DSL Warning] Script produced no layers.")
     if mode_override:
         comp.mode = mode_override
-    comp.build(output_path)
+    # `config: gpu = true` in the .hmg enables NVENC unless the CLI
+    # already forced --gpu / --gpu-codec / --gpu-preset.
+    cfg = evaluator.config
+    if not use_gpu and cfg.get("gpu"):
+        use_gpu = True
+    if gpu_codec in (None, "h264_nvenc") and cfg.get("gpu_codec"):
+        gpu_codec = cfg["gpu_codec"]
+    if gpu_preset == "p4" and cfg.get("gpu_preset"):
+        gpu_preset = cfg["gpu_preset"]
+    if gpu_bitrate is None and cfg.get("gpu_bitrate"):
+        gpu_bitrate = cfg["gpu_bitrate"]
+    comp.build(output_path, use_gpu=use_gpu, gpu_codec=gpu_codec,
+               gpu_preset=gpu_preset, gpu_bitrate=gpu_bitrate,
+               gpu_cq=gpu_cq, threads=threads)
     return output_path

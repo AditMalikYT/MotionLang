@@ -104,12 +104,29 @@ def launch_studio(studio_dir= None):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Motion Language Compiler (.hmg -> MP4)",
-        epilog="Examples: motion script.hmg --render | motion script.hmg --studio | "
+        epilog="Examples: motion script.hmg --render | motion script.hmg --render --gpu | "
+               "motion script.hmg --studio | "
                "motion script.hmg --preview | motion update | motion --update | motion -v",
     )
     parser.add_argument("script", nargs="?", help="Path to .hmg script file")
     parser.add_argument("--preview", action="store_true", help="Launch interactive video preview mode")
     parser.add_argument("--render", action="store_true", help="Force MP4 render mode (overrides config `mode`)")
+    parser.add_argument("--gpu", action="store_true",
+                        help="Encode with NVIDIA NVENC (h264_nvenc) instead of libx264. "
+                             "Falls back to CPU with a warning when unavailable.")
+    parser.add_argument("--gpu-codec", default="h264_nvenc",
+                        help="NVENC encoder: h264_nvenc (default), hevc_nvenc, av1_nvenc "
+                             "(aliases: h264/hevc/h265/av1)")
+    parser.add_argument("--gpu-preset", default="p4",
+                        help="NVENC preset p1 (fastest) .. p7 (best quality), default p4")
+    parser.add_argument("--gpu-bitrate", default=None,
+                        help="Optional target bitrate for NVENC, e.g. 8M (default: VBR CQ19)")
+    parser.add_argument("--gpu-cq", type=int, default=None,
+                        help="NVENC constant-quality 0..51 when --gpu-bitrate is unset (default 19)")
+    parser.add_argument("--threads", type=int, default=None,
+                        help="ffmpeg CPU threads for compositing/encode (default: auto)")
+    parser.add_argument("--gpu-info", action="store_true",
+                        help="Print NVIDIA / NVENC detection info and exit")
     parser.add_argument("--output", default="output/rendered.mp4", help="Output path for rendered video")
     parser.add_argument("--clean-cache", action="store_true", help="Wipe stored asset cutouts (.cache/) and exit")
     parser.add_argument("--cache-stats", action="store_true", help="Show cache usage and exit")
@@ -138,6 +155,10 @@ def main(argv=None):
     if args.update or (args.script == "update" and not os.path.exists("update")):
         # `motion --update` / `motion update`: refresh + reinstall (no script run).
         return do_update()
+    if getattr(args, "gpu_info", False):
+        from motion_lang.gpu import print_gpu_info
+        print_gpu_info()
+        return 0
     if not args.script:
         parser.print_usage(sys.stderr)
         print("motion: error: the following arguments are required: script (unless --clean-cache/--cache-stats)", file=sys.stderr)
@@ -156,7 +177,11 @@ def main(argv=None):
     try:
         run_script(args.script, output_path=args.output, mode_override=mode,
                    use_cache=not args.no_cache, max_workers=args.workers,
-                   emit_json=emit_json, skip_build=skip_build)
+                   emit_json=emit_json, skip_build=skip_build,
+                   use_gpu=args.gpu, gpu_codec=args.gpu_codec,
+                   gpu_preset=args.gpu_preset,
+                   gpu_bitrate=args.gpu_bitrate, gpu_cq=args.gpu_cq,
+                   threads=args.threads)
     except MotionSyntaxError as exc:
         print(str(exc), file=sys.stderr)
         return 2

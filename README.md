@@ -67,6 +67,35 @@ motion -v                                                          # print versi
 > http://localhost:5173 automatically (export it first with `--no-launch`
 > if you only need the JSON).
 
+### GPU rendering (NVIDIA NVENC)
+
+Compositing runs on the CPU; the final encode is offloaded to NVENC:
+
+```bash
+motion file.hmg --render --gpu                          # h264_nvenc, preset p4, VBR CQ19
+motion file.hmg --render --gpu --gpu-codec hevc         # hevc_nvenc (h264/hevc/h265/av1 aliases work)
+motion file.hmg --render --gpu --gpu-preset p1 --gpu-bitrate 8M
+motion --gpu-info                                       # probe GPU + ffmpeg NVENC support
+```
+
+Or enable it per-script via `config:` (CLI flags override it):
+
+```
+config:
+    resolution = 1920x1080
+    fps = 30
+    gpu = true
+    gpu_codec = "hevc_nvenc"   # optional
+    gpu_preset = "p4"          # p1 (fastest) .. p7 (best quality)
+```
+
+Notes: needs an NVIDIA GPU, the proprietary driver (`nvidia-smi`
+reports a card) and a system `ffmpeg` built with `--enable-nvenc`.
+When any of that is missing — or the encode itself fails — rendering
+falls back to CPU `libx264` with a warning instead of erroring out.
+`av1_nvenc` is accepted but only works on Ada-or-newer cards with an
+AV1 encoder block (e.g. not the RTX 2050).
+
 Open the studio:
 
 ```bash
