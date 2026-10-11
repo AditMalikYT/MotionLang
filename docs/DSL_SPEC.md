@@ -272,6 +272,11 @@ Places an asset on the current layer.
 | `size` | `(w, h)` | explicit pixel size |
 | `opacity` | number or `a -> b` | alpha / keyframe |
 | `opacity_end` | number | explicit end alpha |
+| `rotation` | number or `a -> b` | 2D roll in degrees (`+` = clockwise; centre-anchored) / keyframe |
+| `rotation_end` | number | explicit end roll |
+| `rotation_x` / `rotation_y` | number or `a -> b` | pseudo-3D tilt in degrees / keyframe |
+| `rotation_x_end` / `rotation_y_end` | number | explicit end tilts |
+| `perspective` | number | focal factor for tilt projection (default `3.0`; larger = flatter) |
 | `easing` | string | `linear`, `ease`, `ease_in`, `ease_out`, `ease_in_out`, `ease_in_quad`, `ease_out_quad`, `ease_in_out_quad`, `ease_in_cubic`, `ease_out_cubic`, `ease_in_out_cubic`, `ease_in_quart`, `ease_out_quart`, `ease_in_out_quart`, `ease_in_quint`, `ease_out_quint`, `ease_in_out_quint`, `ease_in_sine`, `ease_out_sine`, `ease_in_out_sine`, `ease_in_expo`, `ease_out_expo`, `ease_in_out_expo`, `ease_in_circ`, `ease_out_circ`, `ease_in_out_circ`, `ease_in_back` / `back_in`, `ease_out_back` / `back_out`, `ease_in_out_back`, `ease_in_elastic`, `ease_out_elastic`, `ease_in_out_elastic`, `bounce` / `ease_out_bounce`, `ease_in_bounce`, `ease_in_out_bounce`, `smooth` / `smoothstep` |
 | `transition_in` / `transition_out` | string | `fade(0.5s)`, `slide_left(0.5s)`, `zoom_in(0.5s)`, … |
 | `fx` | `[ ... ]` | effect stack (see §11) |
@@ -300,6 +305,8 @@ audio:
 | `shape(type, **opts)` | image | `type` ∈ `rect`, `circle`, `polygon`, `star`, `path`, `line`; opts: `width`, `height`, `radius` (stars also accept `outer_radius` + `inner_radius`, `points`), `color`/`fill` (solid hex or `gradient(linear\|radial, c1, c2[, angle])`), `stroke_color`, `stroke_width`, `points`, `svg`/`path` (for `path`), `x1`/`y1`/`x2`/`y2` + `width` = thickness (for `line`), … |
 | `text(str, **opts)` | text | see text options below |
 | `file(path)` | image | local image, loaded relative to the script (falls back to the working dir) |
+| `image(path, width=, height=)` | image | local raster (`png`/`jpg`/`webp`) or SVG (`svg`/`svgz`, faithful colours via `cairosvg` when installed, else system rasteriser/fallback); `width=`/`height=` set SVG raster resolution |
+| `svg(src, ...)` | image | vector defined **by code**: file path (`svg("icons/bolt.svg")`), inline markup (`svg("<svg...>...</svg>")`), raw path data (`svg("M0 0 L...Z")`), or `file=`/`markup=`/`path=` keywords. Without paint kwargs colours stay faithful; with `fill=`/`color=`/`gradient()`/`stroke_color=`/`stroke_width=` it renders as a recoloured icon (`width=`/`height=` set raster size) |
 | `wiki(query)` / `web(query)` | image | local match first (`assets/<query>.*`), then web search |
 | `video(path)` | video | local video file; accepts `start=`/`end=`/`speed=` trim kwargs |
 | `import_video(path)` | video | alias of `video()` |
@@ -355,9 +362,10 @@ plus the constants `pi`, `e`, `tau`.
 ### 10.1 Procedural animation with `$t` / `$frame`
 
 Inside `render()` properties (`pos`, `pos_end`, `scale`, `scale_end`,
-`opacity`, `opacity_end`), `$t` (clip-local seconds) and `$frame` (`$t *
-fps`) mark an expression as *dynamic*: it is re-evaluated every frame
-instead of once.
+`opacity`, `opacity_end`, `rotation`, `rotation_end`, `rotation_x`,
+`rotation_x_end`, `rotation_y`, `rotation_y_end`), `$t` (clip-local seconds)
+and `$frame` (`$t * fps`) mark an expression as *dynamic*: it is
+re-evaluated every frame instead of once.
 
 ```hmg
 scene:
@@ -366,7 +374,30 @@ scene:
         render(orb, time=[0, 6],
                pos=(640 + cos($t * 2.0) * 300, 360 + sin($t * 3.0) * 150),
                scale=1.0 + sin($t * 5.0) * 0.2,
+               rotation=$t * 45,
                opacity=0.6 + 0.4 * noise($t * 0.8, seed=3))
+```
+
+### 10.1.1 Vectors in 2D and 3D
+
+Any asset — including `svg()` vectors — takes `rotation` (2D roll,
+`+` = clockwise, centre-anchored), `rotation_x` / `rotation_y` (pseudo-3D
+tilt with `perspective=` focal factor) and all three keyframe with `->`,
+ease, or `$t`:
+
+```hmg
+scene:
+    layer(z=1):
+        // 2D: full spin over the shot
+        render(svg("assets/icons/bolt.svg", width=128, height=128,
+                   fill="#00E5FF"),
+               pos=(576, 296), time=[0, 4], rotation=0 -> 360)
+    layer(z=2):
+        // 3D: tilt onto the floor plane + continuous yaw
+        render(svg("M0 0 L100 0 L100 100 L0 100 Z", width=120, height=120,
+                   fill="#FF2E88"),
+               pos=(200, 300), time=[0, 4],
+               rotation_x=0 -> 55, rotation_y=$t * 30, perspective=2.5)
 ```
 
 Dynamics compose with keyframe ranges (`pos=(x0, y0), pos_end=...`),

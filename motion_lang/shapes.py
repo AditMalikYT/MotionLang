@@ -636,6 +636,114 @@ def render_svg(svg: str, fill="#FFFFFF", width: Optional[int] = None,
     return canvas
 
 
+def rasterize_svg_image(svg: str, width: Optional[int] = None,
+                        height: Optional[int] = None) -> Image.Image:
+    """Rasterise an SVG file/markup to RGBA, preserving its own colours.
+
+    Unlike :func:`render_svg` (which recolours the silhouette for icon
+    shapes), this keeps gradients, fills and strokes intact — it is the
+    loader behind ``image("icon.svg")`` / ``file("icon.svg")``.
+
+    Backend order: ``cairosvg`` (best fidelity) -> ``rsvg-convert`` /
+    ``resvg`` / ``inkscape`` / ImageMagick ``convert`` CLIs (if installed)
+    -> built-in path flattener (single-colour fallback with a warning).
+    """
+    import io as _io
+    import shutil as _shutil
+    import subprocess as _sp
+
+    markup, viewbox = _extract_svg_markup(svg) if svg else ("", None)
+    vb_w = vb_h = 0.0
+    if viewbox:
+        vb_w, vb_h = viewbox[2], viewbox[3]
+    if not vb_w or not vb_h:
+        mw = re.search(r'width\s*=\s*"([\d.]+)', markup or "")
+        mh = re.search(r'height\s*=\s*"([\d.]+)', markup or "")
+        vb_w = float(mw.group(1)) if mw else 256.0
+        vb_h = float(mh.group(1)) if mh else vb_w or 256.0
+    out_w = int(width) if width else int(round(vb_w))
+    out_h = int(height) if height else int(round(vb_h))
+    out_w, out_h = max(1, out_w), max(1, out_h)
+
+    if markup and markup.lstrip().startswith("<"):
+        # 1. cairosvg: faithful, honours gradients/strokes, no recolour.
+        try:
+            import cairosvg  # type: ignore
+            png = cairosvg.svg2png(bytestring=markup.encode("utf-8"),
+                                   output_width=out_w, output_height=out_h)
+            return Image.open(_io.BytesIO(png)).convert("RGBA")
+        except Exception:
+            pass
+        # 2. External rasterisers (faithful colours, no extra pip deps).
+        src_file = svg if isinstance(svg, str) and os.path.isfile(svg) else None
+        data = markup.encode("utf-8")
+        cli_variants = []
+        if _shutil.which("rsvg-convert"):
+            cli_variants.append(["rsvg-convert", "-w", str(out_w),
+                                 "-h", str(out_h)])
+        if _shutil.which("resvg"):
+            cli_variants.append(["resvg", "stdin", "/dev/stdout",
+                                 "-w", str(out_w), "-h", str(out_h)])
+        if _shutil.which("inkscape"):
+            cli_variants.append(["inkscape", "/dev/stdin", "--export-type=png",
+                                 "--export-filename=/dev/stdout",
+                                 f"--export-width={out_w}",
+                                 f"--export-height={out_h}"])
+        if _shutil.which("convert"):
+            cli_variants.append(["convert", "-background", "none", "svg:-",
+                                 f"-resize", f"{out_w}x{out_h}!", "png:-"])
+        if _shutil.which("ksvgtopng"):
+            # ksvgtopng <in> <out> <w> <h>; needs real files.
+            pass
+        for cli in cli_variants:
+            try:
+                if src_file and cli[0] in ("rsvg-convert", "resvg", "inkscape",
+                                           "convert"):
+                    if cli[0] == "rsvg-convert":
+                        proc = _sp.run(["rsvg-convert", "-w", str(out_w),
+                                        "-h", str(out_h), "-o", "-",
+                                        src_file],
+                                       capture_output=True, timeout=30)
+                    elif cli[0] == "convert":
+                        proc = _sp.run(["convert", "-background", "none",
+                                        src_file, "-resize",
+                                        f"{out_w}x{out_h}!", "png:-"],
+                                       capture_output=True, timeout=30)
+                    else:
+                        continue
+                else:
+                    proc = _sp.run(cli, input=data,
+                                   capture_output=True, timeout=30)
+                if proc.returncode == 0 and proc.stdout:
+                    return Image.open(_io.BytesIO(proc.stdout)) \
+                        .convert("RGBA")
+            except Exception:
+                continue
+        # 3. ksvgtopng via temp files (last CLI resort).
+        if _shutil.which("ksvgtopng"):
+            import tempfile as _tf
+            try:
+                with _tf.TemporaryDirectory() as td:
+                    src = src_file
+                    if src is None:
+                        src = os.path.join(td, "in.svg")
+                        with open(src, "w", encoding="utf-8") as fh:
+                            fh.write(markup)
+                    dst = os.path.join(td, "out.png")
+                    proc = _sp.run(["ksvgtopng", src, dst,
+                                    str(out_w), str(out_h)],
+                                   capture_output=True, timeout=30)
+                    if proc.returncode == 0 and os.path.isfile(dst):
+                        return Image.open(dst).convert("RGBA")
+            except Exception:
+                pass
+
+    # Fallback: single-colour path flatten (icons only; gradients lost).
+    print("[DSL Warning] No faithful SVG backend found (pip install "
+          "'cairosvg' for best fidelity); using flat icon fallback.")
+    return render_svg(svg, fill="#FFFFFF", width=out_w, height=out_h)
+
+
 def draw_path(svg: Optional[str] = None, path: Optional[str] = None,
               fill: str = "#FFFFFF", color: Optional[str] = None,
               width: Optional[int] = None, height: Optional[int] = None,

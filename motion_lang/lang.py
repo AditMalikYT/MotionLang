@@ -191,7 +191,9 @@ class RenderSpec:
     __slots__ = ("asset", "start", "end", "pos", "pos_end", "scale",
                  "scale_end", "size", "easing", "transition_in",
                  "transition_out", "opacity", "opacity_end", "fx",
-                 "css_class", "css_id")
+                 "css_class", "css_id", "rotation", "rotation_end",
+                 "rotation_x", "rotation_x_end", "rotation_y",
+                 "rotation_y_end", "perspective")
 
     def __init__(self, asset: Asset, **kw):
         self.asset = asset
@@ -210,6 +212,14 @@ class RenderSpec:
         self.fx = kw.get("fx") or []
         self.css_class = kw.get("css_class")
         self.css_id = kw.get("css_id")
+        # 2D roll (degrees, + = clockwise) + pseudo-3D tilt (degrees).
+        self.rotation = kw.get("rotation")
+        self.rotation_end = kw.get("rotation_end")
+        self.rotation_x = kw.get("rotation_x")
+        self.rotation_x_end = kw.get("rotation_x_end")
+        self.rotation_y = kw.get("rotation_y")
+        self.rotation_y_end = kw.get("rotation_y_end")
+        self.perspective = kw.get("perspective")
 
 
 class Range:
@@ -799,6 +809,12 @@ class Evaluator:
                   easing=spec.easing, transition_in=spec.transition_in,
                   transition_out=spec.transition_out, opacity=spec.opacity,
                   opacity_end=spec.opacity_end, fx=spec.fx,
+                  rotation=spec.rotation, rotation_end=spec.rotation_end,
+                  rotation_x=spec.rotation_x,
+                  rotation_x_end=spec.rotation_x_end,
+                  rotation_y=spec.rotation_y,
+                  rotation_y_end=spec.rotation_y_end,
+                  perspective=spec.perspective,
                   css_class=spec.css_class, css_id=spec.css_id)
         asset = spec.asset
         if asset.kind == "image" and asset.data is not None:
@@ -1070,7 +1086,9 @@ class Evaluator:
 
     #: render() properties evaluated per frame when they mention $t/$frame.
     _DYN_KEYS = frozenset({"pos", "pos_end", "scale", "scale_end",
-                           "opacity", "opacity_end"})
+                           "opacity", "opacity_end", "rotation",
+                           "rotation_end", "rotation_x", "rotation_x_end",
+                           "rotation_y", "rotation_y_end"})
 
     def _eval_render_call(self, args_node, env):
         """Evaluate render() args, wrapping $t-bearing props in DynExpr."""
@@ -1232,14 +1250,156 @@ class Evaluator:
             return path
         return local
 
-    def _builtin_file(self, pos, kw):
-        path = self._resolve_path(str(pos[0]))
+    def _load_local_image(self, raw_path: str, kw: dict, name: str = "file"):
+        """Load a local raster image or SVG into an RGBA ``Asset``.
+
+        SVG (``.svg``/``.svgz`` or ``<svg`` markup) rasterises via
+        :func:`shapes.rasterize_svg_image` (faithful colours); everything
+        else goes through Pillow. Optional ``width=``/``height=`` kwargs
+        control the SVG raster resolution (or resize rasters).
+        """
+        src = str(raw_path)
+        path = self._resolve_path(src)
+        width = kw.get("width")
+        height = kw.get("height")
         try:
-            img = Image.open(path).convert("RGBA")
+            width = int(width) if width is not None else None
+        except (TypeError, ValueError):
+            width = None
+        try:
+            height = int(height) if height is not None else None
+        except (TypeError, ValueError):
+            height = None
+        try:
+            is_svg = path.lower().endswith((".svg", ".svgz"))
+            if not is_svg and os.path.isfile(path):
+                try:
+                    with open(path, "rb") as fh:
+                        head = fh.read(200).lstrip()
+                    is_svg = head.startswith(b"<svg") or b"<svg" in head[:200]
+                except OSError:
+                    pass
+            if is_svg:
+                from motion_lang.shapes import rasterize_svg_image
+                img = rasterize_svg_image(path, width=width, height=height)
+            else:
+                img = Image.open(path).convert("RGBA")
+                if width or height:
+                    w, h = img.size
+                    nw = width or int(round(h and w * (height / h))) or w
+                    nh = height or int(round(w and h * (width / w))) or h
+                    img = img.resize((max(1, nw), max(1, nh)), Image.LANCZOS)
         except Exception as exc:
-            print(f"[DSL Warning] file('{pos[0]}') not found ({exc}); using placeholder.")
-            img = create_fallback_image(os.path.basename(str(pos[0])))
+            print(f"[DSL Warning] {name}('{raw_path}') not found ({exc}); using placeholder.")
+            img = create_fallback_image(os.path.basename(src))
         return Asset("image", img, is_shape=False)
+
+    def _builtin_file(self, pos, kw):
+        if not pos:
+            raise LangRuntimeError("file() requires a path.")
+        return self._load_local_image(pos[0], kw, name="file")
+
+    def _builtin_image(self, pos, kw):
+        """``image("path.png" | "icon.svg", width=, height=)`` -> image asset.
+
+        Documented alias for local images (see DSL_SPEC §10); SVG keeps its
+        own colours via :func:`shapes.rasterize_svg_image`.
+        """
+        if not pos:
+            raise LangRuntimeError("image() requires a path.")
+        return self._load_local_image(pos[0], kw, name="image")
+
+    def _builtin_svg(self, pos, kw):
+        """``svg(...)`` — vector asset defined by code, file or markup.
+
+        Forms (first match wins):
+
+        * ``svg("icons/bolt.svg", width=128, height=128)`` — file path
+          (resolved relative to the script, like ``image()``).
+        * ``svg("<svg ...>...</svg>")`` — inline SVG markup.
+        * ``svg("M0 0 L100 0 L100 100 Z")`` / ``svg(path="...")`` — raw
+          ``<path d>`` data.
+        * ``svg(file="...", markup="...", path="...", d="...")`` keywords.
+
+        Paint kwargs (icon mode): ``fill``/``color``, ``gradient(...)``,
+        ``stroke_color``, ``stroke_width`` — recolours the silhouette via
+        ``shape("path", ...)``. Without paint kwargs the SVG keeps its own
+        colours (faithful raster, like ``image("x.svg")``).
+        """
+        kw = dict(kw)
+        src = str(pos[0]) if pos else None
+        if src is None:
+            for key in ("file", "markup", "path", "d", "svg"):
+                if kw.get(key) is not None:
+                    src = str(kw[key])
+                    break
+        for key in ("file", "markup", "path", "d", "svg"):
+            kw.pop(key, None)
+        if src is None:
+            raise LangRuntimeError(
+                "svg() needs a file path, '<svg...>' markup or path data "
+                "(positional or file=/markup=/path=).")
+        width = kw.pop("width", None)
+        height = kw.pop("height", None)
+        try:
+            width = int(width) if width is not None else None
+        except (TypeError, ValueError):
+            width = None
+        try:
+            height = int(height) if height is not None else None
+        except (TypeError, ValueError):
+            height = None
+        fill = kw.pop("fill", kw.pop("color", None))
+        gradient = kw.pop("gradient", None)
+        stroke_color = kw.pop("stroke_color", None)
+        stroke_width = kw.pop("stroke_width", 0)
+        paint_mode = fill is not None or gradient is not None or stroke_color
+
+        stripped = src.lstrip()
+        cand = self._resolve_path(src) if "\n" not in src and len(src) < 1024 else src
+        is_file = os.path.isfile(cand)
+        is_markup = stripped.startswith("<")
+        if (is_file or is_markup) and not paint_mode:
+            # Faithful raster (own colours, gradients kept).
+            try:
+                from motion_lang.shapes import rasterize_svg_image
+                return Asset("image",
+                             rasterize_svg_image(cand if is_file else src,
+                                                 width=width, height=height),
+                             is_shape=False)
+            except Exception as exc:
+                print(f"[DSL Warning] svg('{src}') failed ({exc}); "
+                      "using placeholder.")
+                return Asset("image", create_fallback_image("svg"),
+                             is_shape=False)
+        # Icon/path mode (file, markup or raw d) via the shape engine.
+        from motion_lang.shapes import generate_shape
+        shape_kw: dict = {}
+        if width is not None:
+            shape_kw["width"] = width
+        if height is not None:
+            shape_kw["height"] = height
+        if fill is not None:
+            shape_kw["fill"] = fill
+        if gradient is not None:
+            shape_kw["fill"] = gradient
+        if stroke_color:
+            shape_kw["stroke_color"] = stroke_color
+        try:
+            shape_kw["stroke_width"] = int(float(stroke_width or 0))
+        except (TypeError, ValueError):
+            pass
+        try:
+            if is_file:
+                img = generate_shape("path", svg=cand, **shape_kw)
+            elif is_markup:
+                img = generate_shape("path", svg=src, **shape_kw)
+            else:
+                img = generate_shape("path", path=src, **shape_kw)
+        except Exception as exc:
+            print(f"[DSL Warning] svg() failed ({exc}); using placeholder.")
+            img = create_fallback_image("svg")
+        return Asset("image", img, is_shape=True)
 
     def _builtin_wiki(self, pos, kw):
         return self._web_image(str(pos[0]))
@@ -1250,11 +1410,15 @@ class Evaluator:
     def _web_image(self, query: str) -> Asset:
         roots = (os.path.join(self.base_dir, "assets"), self.base_dir,
                  os.path.join(os.getcwd(), "assets"), os.getcwd())
-        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+        for ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".svgz"):
             for root in roots:
                 cand = os.path.join(root, query + ext)
                 if os.path.isfile(cand):
                     try:
+                        if cand.lower().endswith((".svg", ".svgz")):
+                            from motion_lang.shapes import rasterize_svg_image
+                            return Asset("image", rasterize_svg_image(cand),
+                                         is_shape=False)
                         return Asset("image", Image.open(cand).convert("RGBA"))
                     except Exception:
                         pass
@@ -1350,6 +1514,13 @@ class Evaluator:
         scale_end = kw.pop("scale_end", None)
         opacity = kw.pop("opacity", None)
         opacity_end = kw.pop("opacity_end", None)
+        rotation = kw.pop("rotation", None)
+        rotation_end = kw.pop("rotation_end", None)
+        rotation_x = kw.pop("rotation_x", None)
+        rotation_x_end = kw.pop("rotation_x_end", None)
+        rotation_y = kw.pop("rotation_y", None)
+        rotation_y_end = kw.pop("rotation_y_end", None)
+        perspective = kw.pop("perspective", None)
         if isinstance(posv, Range):
             pos_end = posv.end
             posv = posv.start
@@ -1359,6 +1530,15 @@ class Evaluator:
         if isinstance(opacity, Range):
             opacity_end = opacity.end
             opacity = opacity.start
+        if isinstance(rotation, Range):
+            rotation_end = rotation.end
+            rotation = rotation.start
+        if isinstance(rotation_x, Range):
+            rotation_x_end = rotation_x.end
+            rotation_x = rotation_x.start
+        if isinstance(rotation_y, Range):
+            rotation_y_end = rotation_y.end
+            rotation_y = rotation_y.start
         fx = kw.pop("fx", None) or []
         spec = RenderSpec(
             asset, start=start, end=end,
@@ -1370,6 +1550,10 @@ class Evaluator:
             transition_in=kw.pop("transition_in", None),
             transition_out=kw.pop("transition_out", None),
             opacity=opacity, opacity_end=opacity_end, fx=fx,
+            rotation=rotation, rotation_end=rotation_end,
+            rotation_x=rotation_x, rotation_x_end=rotation_x_end,
+            rotation_y=rotation_y, rotation_y_end=rotation_y_end,
+            perspective=perspective,
             css_class=kw.pop("class", None), css_id=kw.pop("id", None))
         if self.layer_stack:
             self.layer_stack[-1].renders.append(spec)

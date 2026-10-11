@@ -127,6 +127,107 @@ def _frame_mapped(clip, func):
     return clip.transform(func) if _MPV2 else clip.fl(func)
 
 
+def _keyframed_float(base, base_end, duration, easing_fn, default=0.0):
+    """Per-frame scalar for rotation/tilt props (Range, $t-DynExpr, easing).
+
+    Returns ``None`` when the property is entirely absent; otherwise a
+    ``t -> float`` function (constant when static).
+    """
+    from motion_lang.math_engine import DynExpr
+    dyn0 = base if isinstance(base, DynExpr) else None
+    dyn1 = base_end if isinstance(base_end, DynExpr) else None
+    if base is None and base_end is None and dyn0 is None and dyn1 is None:
+        return None
+    s0 = None if dyn0 is not None else (default if base is None else float(base))
+    s1s = None if (dyn1 is not None or base_end is None) else float(base_end)
+
+    def _fn(t: float) -> float:
+        tt = max(0.0, min(1.0, t / duration if duration > 0 else 1.0))
+        e = easing_fn(tt)
+        v0 = float(dyn0.eval_at(t)) if dyn0 is not None else s0
+        if dyn1 is not None:
+            return lerp(v0, float(dyn1.eval_at(t)), e)
+        if s1s is not None:
+            return lerp(v0, s1s, e)
+        return v0
+    return _fn
+
+
+def _rotated_size(w: float, h: float, degrees: float) -> Tuple[float, float]:
+    """Bounding box of a (w, h) rect rolled by ``degrees`` (clockwise)."""
+    r = math.radians(float(degrees) % 360.0)
+    c, s = abs(math.cos(r)), abs(math.sin(r))
+    return (w * c + h * s, w * s + h * c)
+
+
+def _tilt_pil(img: Image.Image, rx_deg: float, ry_deg: float,
+              perspective: float = 3.0) -> Image.Image:
+    """Pseudo-3D tilt of an RGBA image (rotate about X then Y, project).
+
+    Output keeps the input canvas size (foreshortened, centred). Uses
+    OpenCV homography when importable, else a cosine-compression fallback.
+    """
+    if not rx_deg and not ry_deg:
+        return img
+    w, h = img.size
+    if w <= 0 or h <= 0:
+        return img
+    mode = img.mode
+    try:
+        import cv2 as _cv2  # type: ignore
+    except Exception:
+        _cv2 = None
+    if _cv2 is None:
+        sx = max(0.05, math.cos(math.radians(min(89.0, abs(float(ry_deg))))))
+        sy = max(0.05, math.cos(math.radians(min(89.0, abs(float(rx_deg))))))
+        small = img.resize((max(1, int(round(w * sx))),
+                            max(1, int(round(h * sy)))), Image.BICUBIC)
+        canvas = Image.new(mode, (w, h))
+        mask = small if mode == "L" else (small.getchannel("A") if "A" in small.getbands() else None)
+        canvas.paste(small, ((w - small.size[0]) // 2,
+                             (h - small.size[1]) // 2), mask)
+        return canvas
+    rx = math.radians(max(-89.0, min(89.0, float(rx_deg))))
+    ry = math.radians(max(-89.0, min(89.0, float(ry_deg))))
+    f = max(1.0, float(perspective or 3.0)) * max(w, h)
+    cx, cy = math.cos(rx), math.sin(rx)
+    cyy, syy = math.cos(ry), math.sin(ry)
+    src, dst = [], []
+    for px, py in ((-w / 2, -h / 2), (w / 2, -h / 2),
+                   (w / 2, h / 2), (-w / 2, h / 2)):
+        # Rx then Ry (z=0 plane), then pinhole project.
+        y1, z1 = py * cx, py * cy
+        x2 = px * cyy + z1 * syy
+        z2 = -px * syy + z1 * cyy
+        s = f / max(1.0, f - z2)
+        dst.append([x2 * s + w / 2, y1 * s + h / 2])
+        src.append([px + w / 2, py + h / 2])
+    try:
+        m = _cv2.getPerspectiveTransform(
+            np.array(src, dtype=np.float32), np.array(dst, dtype=np.float32))
+        arr = np.array(img)
+        if mode == "RGBA":
+            border: object = (0, 0, 0, 0)
+        elif mode == "RGB":
+            border = (0, 0, 0)
+        else:
+            border = 0
+        warped = _cv2.warpPerspective(arr, m, (w, h),
+                                      flags=_cv2.INTER_LINEAR,
+                                      borderMode=_cv2.BORDER_CONSTANT,
+                                      borderValue=border)
+        return Image.fromarray(warped, mode)
+    except Exception:
+        return img
+
+
+def _roll_pil(img: Image.Image, degrees: float) -> Image.Image:
+    """2D roll about the centre (degrees, + = clockwise)."""
+    if not degrees:
+        return img
+    return img.rotate(-float(degrees), resample=Image.BICUBIC, expand=True)
+
+
 def _audio_placed(clip, start: float, duration=None, volume: float = 1.0):
     if _MPV2:
         if duration:
@@ -940,7 +1041,11 @@ class Compositor:
     def _compose_clip(self, clip, *, start, duration, pos, pos_end=None,
                       scale=None, scale_end=None, size=None, easing="linear",
                       transition_in=None, transition_out=None, opacity=None,
-                      opacity_end=None, float_fx=None, pulse_fx=None):
+                      opacity_end=None, float_fx=None, pulse_fx=None,
+                      rotation=None, rotation_end=None,
+                      rotation_x=None, rotation_x_end=None,
+                      rotation_y=None, rotation_y_end=None,
+                      perspective=None):
         from motion_lang.math_engine import DynExpr
         easing_fn = resolve_easing(easing)
         clip = _timed(clip, start, duration)
@@ -964,7 +1069,96 @@ class Compositor:
             pos_end if isinstance(pos_end, DynExpr)
             else (tuple(pos_end) if pos_end else None),
             duration, easing_fn, slide_in, slide_out, float_fx=float_fx)
+        # 2D roll / 3D tilt (keyframed, eased, $t-dynamic like scale).
+        rot_fn = _keyframed_float(rotation, rotation_end, duration, easing_fn)
+        rx_fn = _keyframed_float(rotation_x, rotation_x_end, duration,
+                                 easing_fn)
+        ry_fn = _keyframed_float(rotation_y, rotation_y_end, duration,
+                                 easing_fn)
+        has_rot = rot_fn is not None or rx_fn is not None or ry_fn is not None
+        if rot_fn is not None:
+            # Rolling with expand=True grows the canvas; re-anchor the layer
+            # so pos= keeps pointing at the visual centre, not top-left.
+            bw, bh = (clip.size if getattr(clip, "size", None) else (0, 0))
+            base_pos_fn = pos_fn
+
+            def pos_fn(t, _base=base_pos_fn, _rot=rot_fn, _sc=sc_fn,
+                       _bw=bw, _bh=bh):
+                x, y = _base(t)
+                try:
+                    ang = float(_rot(t))
+                except Exception:
+                    return (x, y)
+                if not ang:
+                    return (x, y)
+                try:
+                    s = max(0.01, float(_sc(t))) if _sc is not None else 1.0
+                except Exception:
+                    s = 1.0
+                w0, h0 = _bw * s, _bh * s
+                wr, hr = _rotated_size(w0, h0, ang)
+                return (x + (w0 - wr) / 2.0, y + (h0 - hr) / 2.0)
         clip = _positioned(clip, pos_fn)
+        if has_rot:
+            try:
+                persp = float(perspective) if perspective is not None else 3.0
+            except (TypeError, ValueError):
+                persp = 3.0
+
+            def _rot_frame(pil_img, t, _r=rot_fn, _x=rx_fn, _y=ry_fn,
+                           _p=persp):
+                try:
+                    rx = float(_x(t)) if _x is not None else 0.0
+                except Exception:
+                    rx = 0.0
+                try:
+                    ry = float(_y(t)) if _y is not None else 0.0
+                except Exception:
+                    ry = 0.0
+                try:
+                    rot = float(_r(t)) if _r is not None else 0.0
+                except Exception:
+                    rot = 0.0
+                out = _tilt_pil(pil_img, rx, ry, _p)
+                return _roll_pil(out, rot)
+
+            def _rot_tf(gf, t, _f=_rot_frame):
+                frame = gf(t)
+                if frame.ndim == 2:
+                    frame = np.stack([frame] * 3, axis=-1)
+                if frame.dtype != np.uint8:
+                    frame = np.clip(frame, 0, 255).astype(np.uint8)
+                has_alpha = frame.shape[2] == 4 if frame.ndim == 3 else False
+                if frame.shape[2] == 4:
+                    img = Image.fromarray(frame, "RGBA")
+                else:
+                    img = Image.fromarray(frame[:, :, :3], "RGB")
+                out = _f(img, t)
+                arr = np.array(out)
+                if out.mode == "RGBA" and not has_alpha and arr.shape[2] == 4:
+                    arr = arr[:, :, :3]
+                return arr
+            clip = _frame_mapped(clip, _rot_tf)
+            try:
+                mask = getattr(clip, "mask", None)
+                if mask is not None:
+                    def _mask_tf(gf, t, _f=_rot_frame):
+                        mf = np.asarray(gf(t)).astype(float)
+                        if mf.max() > 1.5:
+                            mf = mf / 255.0
+                        img = Image.fromarray(
+                            (np.clip(mf, 0, 1) * 255).astype(np.uint8), "L")
+                        return (np.array(_f(img, t)).astype(float) / 255.0)
+                    if _MPV2 and hasattr(mask, "transform"):
+                        mask = mask.transform(_mask_tf)
+                    else:
+                        mask = mask.fl(_mask_tf, keep_duration=True)
+                    if _MPV2 and hasattr(clip, "with_mask"):
+                        clip = clip.with_mask(mask)
+                    else:
+                        clip.mask = mask
+            except Exception as exc:
+                print(f"[Engine] Rotation mask failed ({exc}); skipped.")
         # opacity: static value, static keyframes, and/or per-frame dynamics.
         dyn_o0 = opacity if isinstance(opacity, DynExpr) else None
         dyn_o1 = opacity_end if isinstance(opacity_end, DynExpr) else None
@@ -1313,6 +1507,10 @@ class Compositor:
                         pos_end=None, scale_end=None, easing: str = None,
                         transition_in=None, transition_out=None,
                         opacity=None, opacity_end=None,
+                        rotation=None, rotation_end=None,
+                        rotation_x=None, rotation_x_end=None,
+                        rotation_y=None, rotation_y_end=None,
+                        perspective=None,
                         fx: Optional[List[tuple]] = None,
                         css_class=None, css_id=None, is_shape: bool = False):
         """Add an image layer with optional visual effects stack.
@@ -1332,6 +1530,14 @@ class Compositor:
             transition_out: Optional transition-out effect.
             opacity: Optional opacity (0.0 to 1.0).
             opacity_end: Optional end opacity for animation.
+            rotation: 2D roll in degrees (+ = clockwise; keyframable,
+                ``$t``-dynamic). The layer stays centre-anchored.
+            rotation_end: Explicit end roll for animation.
+            rotation_x / rotation_y: Pseudo-3D tilt in degrees (keyframable,
+                ``$t``-dynamic), projected with ``perspective``.
+            rotation_x_end / rotation_y_end: Explicit end tilts.
+            perspective: Focal-length factor for tilt projection
+                (default 3.0; larger = flatter).
             fx: Optional list of FX tuples from parser (e.g., [("blur", {"radius":5}), ...]).
             css_class: Space-separated CSS class(es) from ``class="..."``.
             css_id: CSS id from ``id="..."``.
@@ -1373,7 +1579,13 @@ class Compositor:
                                   size=size, easing=easing, transition_in=transition_in,
                                   transition_out=transition_out, opacity=opacity,
                                   opacity_end=opacity_end, float_fx=float_fx,
-                                  pulse_fx=pulse_fx)
+                                  pulse_fx=pulse_fx, rotation=rotation,
+                                  rotation_end=rotation_end,
+                                  rotation_x=rotation_x,
+                                  rotation_x_end=rotation_x_end,
+                                  rotation_y=rotation_y,
+                                  rotation_y_end=rotation_y_end,
+                                  perspective=perspective)
         clip = self._apply_dynamic_fx(clip, dynamic_fx, duration)
         if blend_mode:
             clip._blend_mode = blend_mode
@@ -1384,6 +1596,10 @@ class Compositor:
                         pos_end=None, scale_end=None, easing: str = None,
                         transition_in=None, transition_out=None,
                         opacity=None, opacity_end=None,
+                        rotation=None, rotation_end=None,
+                        rotation_x=None, rotation_x_end=None,
+                        rotation_y=None, rotation_y_end=None,
+                        perspective=None,
                         fx: Optional[List[tuple]] = None,
                         css_class=None, css_id=None,
                         source_start=None, source_end=None, speed=None):
@@ -1415,7 +1631,13 @@ class Compositor:
                                   size=size, easing=easing, transition_in=transition_in,
                                   transition_out=transition_out, opacity=opacity,
                                   opacity_end=opacity_end, float_fx=float_fx,
-                                  pulse_fx=pulse_fx)
+                                  pulse_fx=pulse_fx, rotation=rotation,
+                                  rotation_end=rotation_end,
+                                  rotation_x=rotation_x,
+                                  rotation_x_end=rotation_x_end,
+                                  rotation_y=rotation_y,
+                                  rotation_y_end=rotation_y_end,
+                                  perspective=perspective)
         clip = self._apply_dynamic_fx(clip, dynamic_fx, duration)
         blend_mode = self._blend_mode_of(fx)
         if blend_mode:
@@ -1428,6 +1650,10 @@ class Compositor:
                        pos_end=None, scale_end=None, easing: str = None,
                        transition_in=None, transition_out=None,
                        opacity=None, opacity_end=None,
+                       rotation=None, rotation_end=None,
+                       rotation_x=None, rotation_x_end=None,
+                       rotation_y=None, rotation_y_end=None,
+                       perspective=None,
                        stroke_width: int = 0, stroke_fill: str = "#000000",
                        bg_color=None, letter_spacing: int = 0,
                        fx: Optional[List[tuple]] = None,
@@ -1461,7 +1687,12 @@ class Compositor:
                              scale=scale, size=size, pos_end=pos_end, scale_end=scale_end,
                              easing=easing, transition_in=transition_in,
                              transition_out=transition_out, opacity=opacity,
-                             opacity_end=opacity_end, fx=fx)
+                             opacity_end=opacity_end, rotation=rotation,
+                             rotation_end=rotation_end, rotation_x=rotation_x,
+                             rotation_x_end=rotation_x_end,
+                             rotation_y=rotation_y,
+                             rotation_y_end=rotation_y_end,
+                             perspective=perspective, fx=fx)
 
     def add_audio_layer(self, audio_path: str, start: float, duration: float = None,
                         volume: float = 1.0):

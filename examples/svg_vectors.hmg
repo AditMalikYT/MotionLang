@@ -1,0 +1,35 @@
+// SVG VECTORS — by code, in 2D and 3D (Motion Language 1.2)
+// svg() takes a file, inline markup, or raw path data; rotation /
+// rotation_x / rotation_y keyframe, ease, and run on $t like the rest.
+
+config:
+    resolution = 1280x720
+    fps = 30
+
+scene:
+    layer(z=1):
+        render(shape("rect", width=1280, height=720, color="#070A12"),
+               time=[0, 6])
+
+        // 2D: icon vector, full clockwise spin, centre-anchored
+        render(svg("assets/icons/bolt.svg", width=160, height=160,
+                   fill="#00E5FF"),
+               pos=(560, 180), time=[0, 6], rotation=0 -> 360,
+               ease=ease_in_out)
+
+        // 2D: raw path data straight in code, gentle rock on $t
+        render(svg("M0 0 L120 0 L120 120 L0 120 Z", width=120, height=120,
+                   fill="#FF2E88"),
+               pos=(180, 420), time=[0, 6], rotation=sin($t * 1.5) * 12)
+
+    layer(z=2):
+        // 3D: tilt back + continuous yaw (pseudo-3D, perspective=2.5)
+        render(svg("assets/logo/motion-logo.svg", width=220, height=220),
+               pos=(830, 380), time=[0, 6],
+               rotation_x=0 -> 50, rotation_y=$t * 25, perspective=2.5,
+               ease=ease_out)
+
+        // 3D: inline markup, faithful colours, static tilt
+        render(svg("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='#FFC24B'/></svg>",
+                   width=110, height=110),
+               pos=(990, 120), time=[0, 6], rotation_x=35, rotation_y=-20)

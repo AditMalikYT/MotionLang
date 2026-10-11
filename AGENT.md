@@ -16,7 +16,7 @@ Welcome to the **Motion Language** repository. This document outlines the projec
 
 ## New Language Features (v1.2)
 - **Procedural Math:** `sin`/`cos`/`tan`, inverse trig, `sqrt`/`pow`, `lerp`, `clamp`, `map_range`, deterministic `noise(x, y, seed)` and constants `pi`/`e`/`tau` (see `motion_lang/math_engine.py`).
-- **Time Dynamics:** `$t`/`$frame` inside `render()` properties (`pos`, `scale`, `opacity`, …) re-evaluate every frame — e.g. `pos=(640 + cos($t*2)*300, 360)`; wrapped in `DynExpr`, composed with keyframes/easing/fx.
+- **Time Dynamics:** `$t`/`$frame` inside `render()` properties (`pos`, `scale`, `opacity`, `rotation`, `rotation_x`, `rotation_y`, …) re-evaluate every frame — e.g. `pos=(640 + cos($t*2)*300, 360)`; wrapped in `DynExpr`, composed with keyframes/easing/fx. `$t` anywhere else (including inside `fx=[...]` params) is a `[DSL Error]`.
 - **Video Editorial:** `video(path, start=, end=, speed=)`, chainable `.cut()`/`.trim()`/`.subclip()`/`.speed()`/`.pos()`, `split_video(src, intervals=)` (see `motion_lang/video_engine.py`; lazy MoviePy ops).
 - **Transitions:** inline `transition_in/out="crossfade(0.8)"` / `"wipe_left(0.5)"` / `"slide_*"` / `"zoom_in/out"` / `"glitch(0.3, intensity=0.8)"`, or the `transition(from=, to=, type=, duration=)` statement wiring two `render()` layers (see `motion_lang/transitions.py`).
 - **Grammar:** rules live in `motion_lang/grammar.lark` (general `chain` for attribute/call/mixed chains, `TIME` token, `transition_stmt`).
@@ -127,9 +127,11 @@ export MyComponent
 ```
 
 #### 4. **Rendering Primitives**
-- `shape("type", ...)` - rect, circle, ellipse, polygon, line, path
+- `shape("type", ...)` - rect, circle, ellipse, polygon, star, line, path/svg/icon
 - `text("content", ...)` - styled text rendering (`load_font("Poppins", weight="bold")` for web fonts)
-- `image("path")` / `video("path")` - media assets
+- `image("path", width=, height=)` / `file("path")` - local raster or SVG (faithful colours)
+- `svg(src, ...)` - vector by code: file path, inline `"<svg...>"` markup, or raw path `d` data (`file=`/`markup=`/`path=` keywords; `fill=`/`color=`/`gradient()`/`stroke_*` switch to recoloured-icon mode)
+- `video("path")` - media assets
 - `wiki("query")` - fetch from Wikipedia
 - `audio("path")` - audio clips
 
@@ -137,7 +139,9 @@ export MyComponent
 ```hmg
 layer(z=1):
     render(asset, pos=(x, y), time=[start, end], scale=1.0, opacity=1.0)
-    render(text, fx=[glow(color="#00E5FF"), blur(radius=5)])
+    render(asset, fx=[glow(color="#00E5FF"), blur(radius=5)])
+    render(vector, pos=(x, y), time=[start, end],
+           rotation=0 -> 90, rotation_x=20, rotation_y=$t * 10)
 ```
 
 #### 6. **Visual Effects (fx stack)**
@@ -159,7 +163,7 @@ After Effects-style effect pipeline. Effects are applied in order:
 
 **Dynamic Effects (per-frame):**
 - `flash_in(duration=0.2, color="#FFFFFF")` - Time-based flash overlay
-- `light_sweep(progress=t, angle=45, speed=1.0, width=0.25, color="#FFFFFF")` - Animated light sweep
+- `light_sweep(angle=45, speed=1.0, width=0.25, color="#FFFFFF")` - Animated light sweep (auto-animated by the engine; never pass `progress=` or `$t` here — `$t` is only legal in `pos`/`scale`/`opacity`/`rotation*` render props)
 
 **Transform Effects:**
 - `float_y(distance=20, speed=1.0)` - Sinusoidal vertical motion
@@ -170,6 +174,7 @@ After Effects-style effect pipeline. Effects are applied in order:
 // Keyframe syntax
 render(asset, scale=1.0 -> 2.0)  // Animate scale from 1.0 to 2.0
 render(asset, pos=(0, 0) -> (100, 100))  // Position animation
+render(vector, rotation=0 -> 180)  // 2D roll; rotation_x/rotation_y tilt in 3D
 ```
 
 #### 8. **Easing Functions**
@@ -226,7 +231,8 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 
 ### 5. **Shape System (shapes.py)**
 - Geometric primitive rendering
-- SVG-like path support
+- SVG files / inline markup / raw path data (`render_svg` for recoloured icons, `rasterize_svg_image` for faithful colours incl. multi-shape `rect`/`polygon`/`path` artwork with `style="fill:..."`)
+- 2D roll + pseudo-3D tilt transforms (`engine.py`: `_roll_pil`, `_tilt_pil`, centre-anchored, keyframable via `rotation`/`rotation_x`/`rotation_y`)
 - Shape styling & coloring
 - Custom shape definitions
 
@@ -316,7 +322,7 @@ render(asset, pos=(0, 0) -> (100, 100))  // Position animation
 | shapes.py | Shape rendering | `draw_rect()`, `draw_circle()`, `draw_path()` |
 | style.py | CSS styling | `parse_css_file()`, `apply_shape_style()` |
 | export.py | Studio export | `export_timeline()`, `compose_spec()` |
-| fetcher.py | Asset loading | `load_image()`, `fetch_wiki()` |
+| fetcher.py | Asset loading | `get_web_transparent_image()`, `get_local_transparent_image()`, `create_fallback_image()` |
 
 ## VFX Pipeline Deep Dive
 
