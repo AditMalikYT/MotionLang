@@ -1247,7 +1247,12 @@ class Evaluator:
         deferred = self._defer_if_dynamic(node, env, [obj, idx], label="index")
         if deferred is not None:
             return deferred
-        return obj[idx]
+        if isinstance(obj, TimeValue):
+            raise LangRuntimeError(TIME_STATIC_MSG.format("Indexing"))
+        try:
+            return obj[idx]
+        except (TypeError, KeyError, IndexError) as exc:
+            raise LangRuntimeError(f"Cannot index: {exc}") from exc
 
     def _eval_method_call(self, node, env):
         # Legacy single-link shape (grammar now produces `chain` instead).
@@ -1280,6 +1285,30 @@ class Evaluator:
         else:
             obj = env.get(str(children[0]))
             i = 1
+        return self._walk_chain_links(node, env, obj, children, i)
+
+    def _eval_index_chain(self, node, env):
+        """Evaluate chains rooted at an indexed value.
+
+        ``segs[0].speed(0.75).pos((0, 0))`` — ``[name, index, link,
+        call_args?, ...]``; the head resolves like :meth:`_eval_index`,
+        then links walk exactly like :meth:`_eval_chain`.
+        """
+        children = node.children
+        obj = env.get(str(children[0]))
+        idx = self.eval(children[1], env)
+        deferred = self._defer_if_dynamic(node, env, [obj, idx],
+                                          label="index")
+        if deferred is not None:
+            return deferred
+        try:
+            obj = obj[idx]
+        except (TypeError, KeyError, IndexError) as exc:
+            raise LangRuntimeError(f"Cannot index: {exc}") from exc
+        return self._walk_chain_links(node, env, obj, children, 2)
+
+    def _walk_chain_links(self, node, env, obj, children, i):
+        """Walk ``name``/``call_args`` links from position ``i`` onward."""
         while i < len(children):
             name = str(children[i])
             i += 1
@@ -1385,6 +1414,14 @@ class Evaluator:
                                 f"with a time-varying value; express the "
                                 f"motion as a single $t expression instead "
                                 f"(e.g. scale=0.5 + $t * 0.2).")
+                        if isinstance(probe, (Asset, VideoAsset, Scene)) or (
+                                isinstance(probe, (tuple, list))
+                                and any(isinstance(p, (Asset, VideoAsset,
+                                                       Scene))
+                                        for p in probe)):
+                            raise LangRuntimeError(
+                                f"render() '{key}' must be a number or "
+                                f"position, not an asset/scene.")
                         kw[key] = DynExpr(
                             value, self, env,
                             fps=self.config.get("fps", 30), label=key)

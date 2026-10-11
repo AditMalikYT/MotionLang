@@ -175,6 +175,46 @@ def test_scene_detection_and_empty():
         raise AssertionError("empty scene transition should raise")
 
 
+def test_index_chain_speed_in_render():
+    import os as _os
+    if not _os.path.isfile("assets/sample_background.mp4"):
+        return
+    from motion_lang.lang import VideoAsset
+    ev, env = _run("config:\n    resolution = 320x240\n    fps = 30\n"
+                   "v = video(\"assets/sample_background.mp4\")\n"
+                   "segs = split_video(v, intervals=[(0, 2), (2, 4)])\n"
+                   "slow = segs[0].speed(0.75)\n"
+                   "placed = segs[1].speed(1.5).pos((10, 20))\n"
+                   "scene:\n    layer(z=1):\n"
+                   "        render(segs[0].speed(0.75), time=[0, 2],"
+                   " pos=(0, 0))\n"
+                   "        render(slow, time=[0, 2], pos=(0, 0))\n"
+                   "        render(placed, time=[0, 2])\n")
+    slow = env.get("slow")
+    assert isinstance(slow, VideoAsset) and slow.speed_factor == 0.75
+    assert slow.source_start == 0 and slow.source_end == 2
+    assert env.get("placed").default_pos == (10.0, 20.0)
+    assert len(ev.renders) == 3
+    assert all(isinstance(s.asset, VideoAsset) for _, s in ev.renders)
+    # render() without pos picks up the chained .pos() default
+    assert ev.renders[2][1].pos == (10.0, 20.0)
+    # dynamic index as an asset is rejected loudly, bad index too
+    for bad, needle in (
+            ("k = $t\nscene:\n    layer(z=9):\n"
+             "        render(segs[k], time=[0, 1])\n", "cannot vary"),
+            ("scene:\n    layer(z=9):\n"
+             "        render(segs[7], time=[0, 1])\n", "cannot index"),
+    ):
+        try:
+            _run("config:\n    resolution = 320x240\n    fps = 30\n"
+                 "v = video(\"assets/sample_background.mp4\")\n"
+                 "segs = split_video(v, intervals=[(0, 2), (2, 4)])\n" + bad)
+        except (MotionSyntaxError, Exception) as exc:
+            assert needle in str(exc).lower(), f"{bad!r}: {exc}"
+        else:
+            raise AssertionError(f"should have raised: {bad!r}")
+
+
 def test_end_to_end_named_scenes(tmp_path=None):
     import tempfile
     code = ("config:\n    resolution = 320x240\n    fps = 30\n"

@@ -92,6 +92,7 @@ expr_stmt: expr _NL
      | NAME "(" [args] ")"                -> call
      | NAME "(" [args] ")" ("." NAME [call_args])+  -> chain
      | NAME ("." NAME [call_args])+       -> chain
+     | NAME "[" expr "]" ("." NAME [call_args])+  -> index_chain
      | NAME "[" expr "]"                  -> index
      | NAME                               -> var
      | "(" expr ")"                       -> paren

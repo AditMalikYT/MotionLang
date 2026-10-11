@@ -470,7 +470,20 @@ scene:
 `.cut()` / `.trim()` / `.subclip()` take `start=`/`end=` (or `duration=`);
 `.speed(f)` retimes (`> 1` faster, `< 1` slow-motion, clamped to
 `[0.05, 16]`); `.pos(x, y)` stores a default position used when
-`render()` omits `pos`. Cutting is lazy (shared frames, cache-friendly);
+`render()` omits `pos`. Chains also root at indexed segments, so selects
+can be graded inline inside `render()`:
+
+```hmg
+v = video("assets/input.mp4")
+segs = split_video(v, intervals=[(0, 3), (5, 8)])   // splice selects
+
+scene:
+    layer(z=1):
+        render(segs[0].speed(0.75), time=[0, 4], pos=(0, 0))
+        render(segs[1].speed(1.5).pos((640, 360)), time=[0, 3])
+```
+
+Cutting is lazy (shared frames, cache-friendly);
 if trimmed media is shorter than its timeline window the window is
 clamped with a warning.
 
