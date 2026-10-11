@@ -16,9 +16,9 @@ Welcome to the **Motion Language** repository. This document outlines the projec
 
 ## New Language Features (v1.2)
 - **Procedural Math:** `sin`/`cos`/`tan`, inverse trig, `sqrt`/`pow`, `lerp`, `clamp`, `map_range`, deterministic `noise(x, y, seed)` and constants `pi`/`e`/`tau` (see `motion_lang/math_engine.py`).
-- **Time Dynamics:** `$t`/`$frame` inside `render()` properties (`pos`, `scale`, `opacity`, `rotation`, `rotation_x`, `rotation_y`, …) re-evaluate every frame — e.g. `pos=(640 + cos($t*2)*300, 360)`; wrapped in `DynExpr`, composed with keyframes/easing/fx. `$t` anywhere else (including inside `fx=[...]` params) is a `[DSL Error]`.
+- **Time Dynamics:** `$t`/`$frame` bind lazily anywhere (variables, loop bodies, functions) and resolve per frame inside `render()` properties (`pos`, `scale`, `opacity`, `rotation`, `rotation_x`, `rotation_y`, …) — e.g. `theta = $t * 0.5` then `pos=(640 + cos(theta)*300, 360)`; wrapped in `DynExpr`/`TimeValue`, composed with keyframes/easing/fx. Static slots (`time=`, `size=`, shape geometry, paths, `fx=` params) and `if`/`repeat`/`range`/boolean logic reject time-varying values with a `[DSL Error]`.
 - **Video Editorial:** `video(path, start=, end=, speed=)`, chainable `.cut()`/`.trim()`/`.subclip()`/`.speed()`/`.pos()`, `split_video(src, intervals=)` (see `motion_lang/video_engine.py`; lazy MoviePy ops).
-- **Transitions:** inline `transition_in/out="crossfade(0.8)"` / `"wipe_left(0.5)"` / `"slide_*"` / `"zoom_in/out"` / `"glitch(0.3, intensity=0.8)"`, or the `transition(from=, to=, type=, duration=)` statement wiring two `render()` layers (see `motion_lang/transitions.py`).
+- **Transitions:** inline `transition_in/out="crossfade(0.8)"` / `"wipe_left(0.5)"` / `"slide_*"` / `"zoom_in/out"` / `"glitch(0.3, intensity=0.8)"`, or the `transition(from=, to=, type=, duration=)` statement wiring two `render()` layers or two named `scene Name:` blocks (see `motion_lang/transitions.py`).
 - **Grammar:** rules live in `motion_lang/grammar.lark` (general `chain` for attribute/call/mixed chains, `TIME` token, `transition_stmt`).
 - **Core Stack:** Python 3.13+, Lark (Parser), MoviePy (Compositor), Pillow & OpenCV (Image/VFX Processing), Remotion (Web Studio Preview)
 - **License:** Independent / Proprietary (Adit Malik)
@@ -103,10 +103,11 @@ scene:
 
 #### 2. **Control Flow**
 - **Variables:** `name = value` (no var/let/const keywords)
-- **Conditionals:** `if condition: ... elif condition: ... else: ...`
+- **Conditionals:** `if condition: ... elif condition: ... else: ...`, plus ternary `x if c else y` (right-nested; per-frame when `c` varies with `$t`)
 - **Loops:** `for item in list: ...` or `repeat N times as i: ...`
 - **Functions:** `fn name(param1, param2): ... return value`
 - **Classes:** `class Name: fn method(self, ...): ...`
+- **Named scenes:** `scene Name:` renders immediately and binds its layers for `transition(from=Name, to=Other, ...)`
 
 #### 3. **Module System**
 ```hmg

@@ -45,6 +45,7 @@ Precedence, low → high:
 
 | Level | Operators | Notes |
 | --- | --- | --- |
+| conditional | `x if c else y` | Python-style ternary, right-nested; only `c` runs at build time, the winning arm runs (per frame when `c` varies with `$t`) |
 | range | `a -> b` | keyframe range, evaluated per option |
 | logical or | `or` | short-circuits, returns operand |
 | logical and | `and` | short-circuits |
@@ -62,6 +63,8 @@ total = (units * 2) + 10
 inside = 0 < offset < 100
 fade = 1 - (idx / 3)
 grow = 0.4 -> 1.2          // Range object: start -> end
+col = GOLD if i % 2 == 0 else CYAN                  // ternary
+tone = GOLD if i % 3 == 0 else (CYAN if i % 3 == 1 else PINK)  // nested
 ```
 
 Values flow through expressions; `->` produces a `Range` that `render(...)`
@@ -180,6 +183,18 @@ else:
 `elif` is also accepted as an alias for `else if`. Comparison chains work:
 `if 0 <= score < 10:`.
 
+### Ternary `x if c else y`
+
+For value selection, Python-style ternaries nest to the right; only the
+condition runs eagerly, and the winning arm runs afterwards — so a
+time-varying condition (`10 if $t > 2 else 5`) re-selects every frame:
+
+```hmg
+for i in range(6):
+    col = GOLD if i % 2 == 0 else CYAN
+    tone = GOLD if i % 3 == 0 else (CYAN if i % 3 == 1 else PINK)
+```
+
 ### for ... in
 
 Iterates lists, tuples, ranges and strings.
@@ -235,6 +250,23 @@ config:
 The composition timeline. Executed top-to-bottom; every `layer(...)` block
 (and every expression statement that returns a `Layer`) is committed to the
 render stack.
+
+A scene can take a **name** (`scene Intro:`) — the body still renders at its
+absolute times, and the name binds to the committed layers so whole scenes
+can be wired by `transition()`:
+
+```hmg
+scene Intro:
+    layer(z=1):
+        render(title, time=[0, 4], pos=(100, 100))
+scene Outro:
+    layer(z=2):
+        render(badge, time=[3.5, 8], pos=(100, 100))
+transition(from=Intro, to=Outro, type="wipe", duration=0.5)
+```
+
+`Scene` handles expose `.start` (earliest layer start), `.end` (latest
+layer end) and `len()` (layer count).
 
 ### layer(z=N):
 
@@ -361,22 +393,40 @@ plus the constants `pi`, `e`, `tau`.
 
 ### 10.1 Procedural animation with `$t` / `$frame`
 
-Inside `render()` properties (`pos`, `pos_end`, `scale`, `scale_end`,
-`opacity`, `opacity_end`, `rotation`, `rotation_end`, `rotation_x`,
-`rotation_x_end`, `rotation_y`, `rotation_y_end`), `$t` (clip-local seconds)
-and `$frame` (`$t * fps`) mark an expression as *dynamic*: it is
-re-evaluated every frame instead of once.
+`$t` (clip-local seconds) and `$frame` (`$t * fps`) mark an expression as
+*time-varying*. Two equivalent forms:
+
+1. **Directly** inside `render()` properties (`pos`, `pos_end`, `scale`,
+   `scale_end`, `opacity`, `opacity_end`, `rotation`, `rotation_end`,
+   `rotation_x`, `rotation_x_end`, `rotation_y`, `rotation_y_end`) — the
+   expression is re-evaluated every frame instead of once.
+2. **Bound to a variable** anywhere (top level, loops, functions, class
+   attributes) and combined with math (`sin`/`cos`/`lerp`/`clamp`/`min`/
+   `max`/`math.*`/`np.*`...), then consumed by a `render()` property:
 
 ```hmg
+theta = $t * 0.5                    // time-varying value, no error
+orbit_x = 640 + cos(theta) * 300    // composes: still time-varying
+speed = max($t * 60, 20)            // math builtins lift too
+
 scene:
     orb = shape("circle", radius=50, color="#00E5FF")
     layer(z=1):
         render(orb, time=[0, 6],
-               pos=(640 + cos($t * 2.0) * 300, 360 + sin($t * 3.0) * 150),
+               pos=(orbit_x, 360 + sin($t * 3.0) * 150),
                scale=1.0 + sin($t * 5.0) * 0.2,
                rotation=$t * 45,
                opacity=0.6 + 0.4 * noise($t * 0.8, seed=3))
 ```
+
+A per-frame ternary selects between values over time
+(`10 if $t > 2 else 5`). Time-varying values compose with keyframe ranges
+(`pos=(x0, y0), pos_end=...`), easing, `float_y`/`pulse` modulators and
+transitions. They **cannot** freeze into static slots — `time=[...]`
+windows, `size=`, shape geometry, file paths, `fx=[...]` parameters — nor
+drive `if`/`repeat`/`range` conditions or boolean (`and`/`or`/`not`) logic;
+those raise a `[DSL Error]` naming the animated properties instead. The
+Remotion studio export bakes the start pose (`t=0`).
 
 ### 10.1.1 Vectors in 2D and 3D
 
@@ -401,8 +451,7 @@ scene:
 ```
 
 Dynamics compose with keyframe ranges (`pos=(x0, y0), pos_end=...`),
-easing, `float_y`/`pulse` modulators and transitions. Using `$t` outside
-`render()` properties is an error with a pointer to this section. The
+easing, `float_y`/`pulse` modulators and transitions (see §10.1). The
 Remotion studio export bakes the start pose (`t=0`).
 
 ### 10.2 Video cutting, trimming and retiming
@@ -438,9 +487,10 @@ zoom_in(0.6) / zoom_out(0.6)
 glitch(0.3, intensity=0.8, seed=7)
 ```
 
-Statement form (modern DSL) wires two `render()` layers — entrances play
-over the first `duration` seconds of the *to* layer, exits over the last
-`duration` of the *from* layer; overlap the `time=` windows by `duration`
+Statement form (modern DSL) wires two `render()` layers — or two named
+`scene Name:` blocks (every committed layer on each side) — entrances play
+over the first `duration` seconds of the *to* layer(s), exits over the last
+`duration` of the *from* layer(s); overlap the `time=` windows by `duration`
 for a true blend:
 
 ```hmg
@@ -450,6 +500,14 @@ scene:
     layer(z=2):
         lb = render(text("Scene 2"), time=[2.5, 5.5], pos=(100, 100))
     transition(from=la, to=lb, type="crossfade", duration=0.5)
+
+scene Intro:
+    layer(z=1):
+        render(text("Title"), time=[0, 4], pos=(100, 100))
+scene Outro:
+    layer(z=2):
+        render(text("Finale"), time=[3.5, 8], pos=(100, 100))
+transition(from=Intro, to=Outro, type="wipe", duration=0.5)
 ```
 
 `type=` also accepts `wipe(direction="left", duration=0.5)` and

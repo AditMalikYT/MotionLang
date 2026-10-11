@@ -81,13 +81,24 @@ def test_math_builtins_in_dsl():
     assert _val("x = noise(3.0, 4.0)\n", "x") == noise(3.0, 4.0)
 
 
-def test_time_var_rejected_outside_render():
-    try:
-        _run("x = 960 + cos($t * 2.0)\n")
-    except LangRuntimeError as exc:
-        assert "$t" in str(exc) and "render()" in str(exc)
-    else:
-        raise AssertionError("expected $t outside render() to fail")
+def test_time_var_lifts_outside_render():
+    # $t binds lazily outside render() and resolves per frame ...
+    from motion_lang.lang import TimeValue
+    x = _val("x = 960 + cos($t * 2.0)\n", "x")
+    assert isinstance(x, TimeValue)
+    assert abs(x.eval_at(0.0) - 961.0) < 1e-9
+    # ... but freezing it into static slots still fails loudly.
+    for bad in (
+        "if $t > 1:\n    x = 1\n",
+        "repeat $t times:\n    x = 1\n",
+        "x = range($t)\n",
+    ):
+        try:
+            _run(bad)
+        except LangRuntimeError as exc:
+            assert "time" in str(exc).lower()
+        else:
+            raise AssertionError(f"expected static-slot failure: {bad!r}")
 
 
 def test_tree_has_time():

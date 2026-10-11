@@ -136,10 +136,18 @@ class DynExpr:
 
     def eval_at(self, t: float) -> Any:
         from motion_lang.lang import Env  # deferred: avoids import cycle
+        from lark import Token, Tree  # deferred: keeps math_engine light
         scope = Env(self.env)
         scope.define("$t", float(t))
         scope.define("$frame", float(t) * self.fps)
-        return self.evaluator.eval(self.node, scope)
+        node = self.node
+        # TimeValue (``$t`` math bound to variables) or a plain resolver.
+        if not isinstance(node, (Tree, Token)):
+            if hasattr(node, "eval_at"):
+                return node.eval_at(t)
+            if callable(node):
+                return node(t)
+        return self.evaluator.eval(node, scope)
 
     def static_at(self, t: float = 0.0) -> Any:
         """Best-effort plain value (studio export, thumbnails)."""

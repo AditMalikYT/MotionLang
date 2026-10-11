@@ -47,7 +47,7 @@ param: NAME ["=" expr]
 
 class_def: "class" NAME [ "(" NAME ")" ] ":" _NL _INDENT (_NL | statement)+ _DEDENT
 
-scene_block: "scene" ":" _NL _INDENT (_NL | statement)+ _DEDENT
+scene_block: "scene" [NAME] ":" _NL _INDENT (_NL | statement)+ _DEDENT
 audio_block: "audio" ":" _NL _INDENT (_NL | statement)+ _DEDENT
 
 layer_block: LAYER "(" [args] ")" ":" _NL _INDENT (_NL | statement)+ _DEDENT
@@ -71,7 +71,9 @@ return_stmt: "return" layer_block -> return_layer
 assign_stmt: expr "=" expr _NL
 expr_stmt: expr _NL
 
-?expr: arrow_expr
+?expr: if_else
+?if_else: arrow_expr
+        | arrow_expr "if" or_expr "else" if_else  -> if_else_expr
 ?arrow_expr: or_expr (ARROW or_expr)*
 ?or_expr: and_expr ("or" and_expr)*
 ?and_expr: not_expr ("and" not_expr)*

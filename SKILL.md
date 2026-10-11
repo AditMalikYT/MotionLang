@@ -19,10 +19,13 @@ Motion Language is structured as a modular DSL combining:
 ## 2. Advanced Mathematical Motion & Procedural Animation
 
 Motion Language evaluates `$t` (clip-local seconds) and `$frame` (`$t * fps`)
-per frame, but **only inside `render()` properties** (`pos`, `scale`,
+per frame. They bind lazily **anywhere** — top level, loop bodies, function
+and class state — and resolve inside `render()` properties (`pos`, `scale`,
 `opacity`, `rotation`, `rotation_x`, `rotation_y`, and their `*_end` pairs).
-Using `$t` anywhere else is a `[DSL Error]`. You can use math functions to
-create organic, physics-like, or geometric animations without keyframing manually.
+Time-varying values in static slots (`time=`/`size=`, shape geometry, file
+paths, `fx=[...]` params, `if`/`repeat`/`range` conditions, `and`/`or`/`not`)
+are a `[DSL Error]`. You can use math functions to create organic,
+physics-like, or geometric animations without keyframing manually.
 
 ### Available Math Functions & Constants
 - **Trigonometry:** `sin(x)`, `cos(x)`, `tan(x)`, `asin(x)`, `acos(x)`, `atan(x)`, `atan2(y, x)`
@@ -127,8 +130,8 @@ import math
 import numpy as np
 
 // Generate a spiral of particles with per-frame $t motion.
-// NOTE: $t may only appear inside render() props (pos/scale/... here),
-// never in plain assignments or loop bodies.
+// NOTE: $t binds lazily anywhere; static slots (time=, shape sizes,
+// if/repeat conditions) still reject it.
 config:
     resolution = 1280x720
     fps = 30
@@ -178,6 +181,43 @@ scene:
                     time=[3.3, 8], transition_in="crossfade(0.7)")
     transition(from=la, to=lb, type="crossfade", duration=0.7)
 ```
+
+### Named scenes: `scene Name:` + `transition(from=Name, to=Other)`
+
+A named scene renders immediately at its absolute times **and** binds its
+committed layers, so one `transition()` can wire whole scenes:
+
+```hmg
+config:
+    resolution = 1280x720
+    fps = 30
+
+scene Intro:
+    layer(z=1):
+        render(image("assets/logo.png"), pos=(640, 360), time=[0, 4])
+        render(text("Motion Language", size=64), pos=(640, 200), time=[0, 4])
+scene Outro:
+    layer(z=2):
+        render(text("Thanks for watching", size=56), pos=(640, 360), time=[3.5, 8])
+
+transition(from=Intro, to=Outro, type="wipe", duration=0.5)
+```
+
+`type="wipe"` aliases `wipe_left`; every layer of `Intro` gets the exit and
+every layer of `Outro` the entrance (overlap `time=` windows by `duration`).
+`Scene` handles also expose `.start` / `.end` and `len()`.
+
+### Ternary values: `x if c else y`
+
+```hmg
+for i in range(6):
+    col = GOLD if i % 2 == 0 else CYAN
+    tone = GOLD if i % 3 == 0 else (CYAN if i % 3 == 1 else PINK)
+    render(shape("circle", radius=18, color=col), pos=(120 + i * 80, 180))
+```
+
+Only the condition runs eagerly; the winning arm runs afterwards — so
+`10 if $t > 2 else 5` re-selects every frame inside `render()` props.
 
 ---
 

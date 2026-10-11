@@ -650,7 +650,7 @@ _MODERN_SIGNS = (
         r"(?m)^[ \t]*import[ \t]+[A-Za-z_]\w*"
         r"(?:[ \t]*,[ \t]*[A-Za-z_]\w*)*[ \t]+from\b"),
     __import__("re").compile(r"(?m)^[ \t]*(?:fn|class)[ \t]+[A-Za-z_]\w*"),
-    __import__("re").compile(r"(?m)^[ \t]*(?:scene|audio)[ \t]*:"),
+    __import__("re").compile(r"(?m)^[ \t]*(?:scene|audio)(?:[ \t]+[A-Za-z_]\w*)?[ \t]*:"),
     __import__("re").compile(r"(?m)^[ \t]*export[ \t]+[A-Za-z_]\w*"),
     __import__("re").compile(r"\brepeat\b[^\n]*\btimes\b"),
     # Bare Python imports (no `from`): `import math`, `import numpy as np`.

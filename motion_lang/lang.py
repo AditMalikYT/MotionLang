@@ -91,11 +91,11 @@ def _format_lang_error(exc: UnexpectedInput, source: str) -> str:
     return (f"[DSL Syntax Error] line {line}, column {col}\n{ctx}{hint}\n"
             "Modern syntax: `config:`, `import A, B from \"file.hmg\"`, "
             "`import math` / `import numpy as np`, `fn name(args):`, "
-            "`class Name:`, `scene:`, `audio:`, "
+            "`class Name:`, `scene:` / `scene Name:`, `audio:`, "
             "`layer(z=1):`, `for x in items:`, `repeat 3 times as i:`, "
-            "`if cond:` / `else if` / `else`, "
+            "`if cond:` / `else if` / `else`, `x if c else y`, "
             "`transition(from=, to=, type=, duration=)`, `$t`/`$frame` in "
-            "render() properties.")
+            "variables and render() properties.")
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,13 @@ class VideoAsset:
     def pos(self, x, y=None):
         if y is None and isinstance(x, (list, tuple)):
             x, y = x[0], x[1]
-        return self._clone(default_pos=(float(x), float(y)))
+
+        def _num(v):
+            # Time-varying defaults ride along for render() to resolve.
+            if isinstance(v, TimeValue):
+                return v
+            return float(v)
+        return self._clone(default_pos=(_num(x), _num(y)))
 
     def split(self, intervals):
         from motion_lang.video_engine import normalise_interval
@@ -231,6 +237,109 @@ class Range:
 
     def __repr__(self):
         return f"{self.start} -> {self.end}"
+
+
+#: Message used whenever a time-varying value reaches a static slot.
+TIME_STATIC_MSG = (
+    "{} varies with time ($t/$frame): bind it to a variable and use it in "
+    "animated render() properties (pos, scale, opacity, rotation, ...) or "
+    "combine it with math (sin/cos/lerp/clamp/...). It cannot freeze into "
+    "static slots (time=[...], shape sizes, file paths) or drive "
+    "if/repeat/range conditions and boolean logic."
+)
+
+
+class TimeValue:
+    """A time-varying value from ``$t``/``$frame`` used outside render().
+
+    Created when a ``$t`` expression is evaluated in ordinary code
+    (assignments, loop bodies, function calls). It binds lazily and resolves
+    per frame wherever a dynamic render() property accepts it::
+
+        theta = $t * 0.5            // TimeValue, no error
+        x = 960 + cos(theta) * 300  // composes: still time-varying
+        render(dot, pos=(x, 200))   // animated per frame
+
+    Static consumption (``float()``/``int()``/``bool()``/``len()``/iteration)
+    raises a ``LangRuntimeError`` pointing at animated render() properties.
+    """
+
+    __slots__ = ("_fn", "label")
+
+    def __init__(self, fn, label="$t"):
+        self._fn = fn
+        self.label = label
+
+    def eval_at(self, t: float):
+        return self._fn(float(t))
+
+    def static_at(self, t: float = 0.0):
+        try:
+            return self.eval_at(t)
+        except Exception:
+            return None
+
+    def _static_use(self, op: str):
+        raise LangRuntimeError(TIME_STATIC_MSG.format(
+            f"'{self.label}'" if self.label else "This value"))
+
+    def __float__(self):
+        self._static_use("float()")
+
+    def __int__(self):
+        self._static_use("int()")
+
+    def __index__(self):
+        self._static_use("int()")
+
+    def __bool__(self):
+        self._static_use("boolean logic")
+
+    def __len__(self):
+        self._static_use("len()")
+
+    def __iter__(self):
+        self._static_use("iteration")
+
+    def __repr__(self):
+        return f"<time-varying {self.label}>"
+
+
+class Scene:
+    """A named ``scene Name:`` block: handle to the specs it committed.
+
+    The body executes immediately (layers render at their absolute times),
+    and the name binds to the list of committed :class:`RenderSpec`s, so
+    whole scenes can be wired by name::
+
+        scene Intro:
+            layer(z=1):
+                render(title, time=[0, 4], pos=(100, 100))
+        scene Outro:
+            layer(z=1):
+                render(badge, time=[3.5, 8], pos=(100, 100))
+        transition(from=Intro, to=Outro, type="wipe", duration=0.5)
+    """
+
+    __slots__ = ("name", "specs")
+
+    def __init__(self, name: str, specs):
+        self.name = str(name)
+        self.specs = list(specs)
+
+    @property
+    def start(self) -> float:
+        return min((float(s.start) for s in self.specs), default=0.0)
+
+    @property
+    def end(self) -> float:
+        return max((float(s.end) for s in self.specs), default=0.0)
+
+    def __len__(self):
+        return len(self.specs)
+
+    def __repr__(self):
+        return f"<scene {self.name} ({len(self.specs)} layer(s))>"
 
 
 class Stylesheet:
@@ -329,6 +438,34 @@ class Env:
 
     def define(self, name: str, value: Any):
         self.vars[name] = value
+
+
+def _has_time_scope(env: "Env") -> bool:
+    """True when ``$t`` is bound (i.e. evaluating per frame)."""
+    try:
+        return env.has("$t")
+    except Exception:
+        return False
+
+
+def _contains_timevalue(value: Any) -> bool:
+    """True if a value is (or nests, in tuples/lists) a :class:`TimeValue`."""
+    if isinstance(value, TimeValue):
+        return True
+    if isinstance(value, (tuple, list)):
+        return any(_contains_timevalue(v) for v in value)
+    return False
+
+
+def _resolve_dynamic(value: Any, t: float) -> Any:
+    """Resolve TimeValues (nested in tuples/lists) at clip-local time ``t``."""
+    if isinstance(value, TimeValue):
+        return value.eval_at(t)
+    if isinstance(value, tuple):
+        return tuple(_resolve_dynamic(v, t) for v in value)
+    if isinstance(value, list):
+        return [_resolve_dynamic(v, t) for v in value]
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -629,11 +766,22 @@ class Evaluator:
 
     # directives -------------------------------------------------------------
     def _stmt_scene_block(self, node, env):
+        kids = list(node.children)
+        name = None
+        if kids and isinstance(kids[0], Token) and kids[0].type == "NAME":
+            name = str(kids[0])
+            kids = kids[1:]
         if self.module_mode:
             return None
         self._ensure_compositor()
-        self.exec_stmts(node.children, env)
-        return None
+        if name is None:
+            self.exec_stmts(kids, env)
+            return None
+        before = len(self.renders)
+        self.exec_stmts(kids, env)
+        scene = Scene(name, [spec for _, spec in self.renders[before:]])
+        env.define(name, scene)
+        return scene
 
     def _stmt_audio_block(self, node, env):
         if self.module_mode:
@@ -832,6 +980,37 @@ class Evaluator:
             text = data.pop("text", "")
             comp.add_text_layer(text, **data, **kw)
 
+    # -- time-varying values -----------------------------------------------
+    def _defer_node(self, node, env, label: str = "expression"):
+        """Wrap a Lark subtree as a :class:`TimeValue` (per-frame re-eval)."""
+        fps = float(self.config.get("fps", 30) or 30)
+
+        def _fn(t, _n=node, _s=self, _e=env, _f=fps):
+            scope = Env(_e)
+            scope.define("$t", float(t))
+            scope.define("$frame", float(t) * _f)
+            return _s.eval(_n, scope)
+        return TimeValue(_fn, label)
+
+    def _defer_if_dynamic(self, node, env, values, label: str = "expression"):
+        """Defer a composite expression holding TimeValues (build time).
+
+        Returns a :class:`TimeValue` re-evaluating ``node`` per frame, or
+        ``None`` when everything is static (or already per-frame, where
+        :meth:`_eval_var` resolves time variables directly).
+        """
+        if _has_time_scope(env):
+            return None
+        if any(_contains_timevalue(v) for v in values):
+            return self._defer_node(node, env, label)
+        return None
+
+    def _resolve_tv(self, value, env):
+        """Resolve a TimeValue immediately when already per-frame."""
+        if isinstance(value, TimeValue) and _has_time_scope(env):
+            return value.eval_at(env.get("$t"))
+        return value
+
     # -- expression evaluation ----------------------------------------------
     def eval(self, node, env: Env):
         if isinstance(node, Token):
@@ -868,21 +1047,33 @@ class Evaluator:
     def _eval_var(self, node, env):
         name = str(node.children[0])
         try:
-            return env.get(name)
+            value = env.get(name)
         except LangRuntimeError:
             from motion_lang.math_engine import TIME_CONSTANTS
             if name in TIME_CONSTANTS:
                 return TIME_CONSTANTS[name]
             raise
+        # A time-varying variable resolves immediately when already per-frame
+        # (render() dynamics, deferred re-evaluation); otherwise it flows on
+        # as a TimeValue for render() props and time math to consume.
+        return self._resolve_tv(value, env)
 
     def _eval_time_var(self, node, env):
         name = str(node.children[0])
         try:
             return env.get(name)
         except LangRuntimeError:
-            raise LangRuntimeError(
-                f"{name} is only available inside animated render() properties "
-                f"(pos, scale, opacity, ...), where it is evaluated per frame.")
+            pass
+        # Outside render(): bind lazily — the value resolves per frame
+        # wherever a dynamic render() property (or time math) accepts it.
+        fps = float(self.config.get("fps", 30) or 30)
+
+        def _fn(t, _n=node, _s=self, _e=env, _f=fps):
+            scope = Env(_e)
+            scope.define("$t", float(t))
+            scope.define("$frame", float(t) * _f)
+            return _s.eval(_n, scope)
+        return TimeValue(_fn, name)
 
     def _eval_paren(self, node, env):
         return self.eval(node.children[0], env)
@@ -901,7 +1092,11 @@ class Evaluator:
 
     def _eval_neg(self, node, env):
         # children include the kept MINUS terminal, so the operand is last.
-        return -self.eval(node.children[-1], env)
+        value = self.eval(node.children[-1], env)
+        deferred = self._defer_if_dynamic(node, env, [value], label="negation")
+        if deferred is not None:
+            return deferred
+        return -value
 
     def _eval_not_op(self, node, env):
         return not self._truthy(self.eval(node.children[0], env))
@@ -931,9 +1126,25 @@ class Evaluator:
                 return result
         return result
 
+    def _eval_if_else_expr(self, node, env):
+        """``body if cond else orelse`` (Python-style ternary, right-nested).
+
+        Only ``cond`` runs at build time; the winning arm runs (once for
+        static conditions, per frame when the condition varies with time).
+        """
+        body_node, cond_node, else_node = node.children
+        cond = self.eval(cond_node, env)
+        if isinstance(cond, TimeValue) and not _has_time_scope(env):
+            return self._defer_node(node, env, label="conditional")
+        branch = body_node if self._truthy(cond) else else_node
+        return self.eval(branch, env)
+
     def _eval_arrow_expr(self, node, env):
         operands = [self.eval(node.children[i], env)
                     for i in range(0, len(node.children), 2)]
+        deferred = self._defer_if_dynamic(node, env, operands, label="range")
+        if deferred is not None:
+            return deferred
         if len(operands) == 2:
             return Range(operands[0], operands[1])
         return [Range(operands[i], operands[i + 1])
@@ -945,6 +1156,10 @@ class Evaluator:
         ops = [str(node.children[i]) for i in range(1, len(node.children), 2)]
         if not ops:
             return operands[0]
+        deferred = self._defer_if_dynamic(node, env, operands,
+                                          label="comparison")
+        if deferred is not None:
+            return deferred
         for i, op in enumerate(ops):
             if not self._compare(op, operands[i], operands[i + 1]):
                 return False
@@ -954,6 +1169,10 @@ class Evaluator:
         operands = [self.eval(node.children[i], env)
                     for i in range(0, len(node.children), 2)]
         ops = [str(node.children[i]) for i in range(1, len(node.children), 2)]
+        deferred = self._defer_if_dynamic(node, env, operands,
+                                          label="arithmetic")
+        if deferred is not None:
+            return deferred
         acc = operands[0]
         for op, rhs in zip(ops, operands[1:]):
             acc = self._arith(op, acc, rhs)
@@ -963,6 +1182,10 @@ class Evaluator:
         operands = [self.eval(node.children[i], env)
                     for i in range(0, len(node.children), 2)]
         ops = [str(node.children[i]) for i in range(1, len(node.children), 2)]
+        deferred = self._defer_if_dynamic(node, env, operands,
+                                          label="arithmetic")
+        if deferred is not None:
+            return deferred
         acc = operands[0]
         for op, rhs in zip(ops, operands[1:]):
             acc = self._arith(op, acc, rhs)
@@ -1021,6 +1244,9 @@ class Evaluator:
     def _eval_index(self, node, env):
         obj = self.eval(node.children[0], env)
         idx = self.eval(node.children[1], env)
+        deferred = self._defer_if_dynamic(node, env, [obj, idx], label="index")
+        if deferred is not None:
+            return deferred
         return obj[idx]
 
     def _eval_method_call(self, node, env):
@@ -1032,7 +1258,7 @@ class Evaluator:
         for name in names[1:-1]:
             obj = self._get_attr(obj, name)
         pos, kw = self.eval_args(args_node, env)
-        return self._call_link(obj, names[-1], pos, kw)
+        return self._call_link(obj, names[-1], pos, kw, node, env)
 
     def _eval_chain(self, node, env):
         """Evaluate attribute/call chains left to right.
@@ -1063,18 +1289,37 @@ class Evaluator:
                 args_node = inner[0] if inner else None
                 i += 1
                 pos, kw = self.eval_args(args_node, env)
-                obj = self._call_link(obj, name, pos, kw)
+                obj = self._call_link(obj, name, pos, kw, node, env)
             else:
                 obj = self._get_attr(obj, name)
         return obj
 
-    def _call_link(self, obj, name: str, pos, kw):
+    def _call_link(self, obj, name: str, pos, kw, node=None, env=None):
         method = self._get_attr(obj, name)
         if isinstance(method, BoundMethod):
             return self.call_function(method.fn, [method.instance] + pos, kw)
         if callable(method):
+            # Native callables (math/numpy/helpers/VideoAsset edits) with
+            # time-varying args re-run per frame — except VideoAsset edits,
+            # which must stay assets (their numeric slots error helpfully,
+            # while .pos() stores time-varying defaults for render()).
+            if node is not None and env is not None \
+                    and not isinstance(obj, VideoAsset) \
+                    and not _has_time_scope(env) \
+                    and any(_contains_timevalue(v)
+                            for v in list(pos) + list(kw.values())):
+                return self._defer_node(node, env, label=f"{name}()")
             return method(*pos, **kw)
         raise LangRuntimeError(f"'{name}' is not callable.")
+
+    #: Builtins that must stay static (assets, I/O, type converters, ...),
+    #: so time misuse fails loudly at build time instead of deferring.
+    _STATIC_BUILTINS = frozenset({
+        "shape", "text", "file", "image", "svg", "wiki", "web",
+        "video", "import_video", "split_video", "audio", "load_font",
+        "render", "play", "print", "len", "range", "int", "float",
+        "str", "bool", "list",
+    })
 
     def _eval_call(self, node, env):
         name = str(node.children[0])
@@ -1082,6 +1327,23 @@ class Evaluator:
         if name == "render":
             return self._eval_render_call(args_node, env)
         pos, kw = self.eval_args(args_node, env)
+        # Asset/style builtins must stay static so time misuse fails loudly
+        # at build time; pure math (min/max/sin/cos/...) and user helpers
+        # defer to per-frame evaluation. Unknown names fall through so the
+        # "unknown function" error still fires at build time.
+        if name in _FX_NAMES or name in self._STATIC_BUILTINS:
+            if name in _FX_NAMES and any(
+                    _contains_timevalue(v)
+                    for v in list(pos) + list(kw.values())):
+                raise LangRuntimeError(
+                    TIME_STATIC_MSG.format("fx parameters"))
+            return self._invoke(name, pos, kw, env)
+        from motion_lang.math_engine import MATH_FUNCS
+        if name in MATH_FUNCS or env.has(name):
+            deferred = self._defer_if_dynamic(
+                node, env, list(pos) + list(kw.values()), label=f"{name}()")
+            if deferred is not None:
+                return deferred
         return self._invoke(name, pos, kw, env)
 
     #: render() properties evaluated per frame when they mention $t/$frame.
@@ -1091,7 +1353,12 @@ class Evaluator:
                            "rotation_y", "rotation_y_end"})
 
     def _eval_render_call(self, args_node, env):
-        """Evaluate render() args, wrapping $t-bearing props in DynExpr."""
+        """Evaluate render() args, wrapping dynamic props for per-frame eval.
+
+        Two dynamic forms: raw ``$t``/``$frame`` subtrees become
+        :class:`DynExpr`, and :class:`TimeValue` results (``$t`` math bound
+        to variables) are resolved per frame the same way.
+        """
         from motion_lang.math_engine import DynExpr, tree_has_time
         pos, kw = [], {}
         if args_node is None:
@@ -1104,10 +1371,28 @@ class Evaluator:
                                      fps=self.config.get("fps", 30),
                                      label=key)
                 else:
-                    kw[key] = self.eval(a.children[1], env)
+                    value = self.eval(a.children[1], env)
+                    if key in self._DYN_KEYS and _contains_timevalue(value):
+                        value = TimeValue(
+                            lambda t, _v=value: _resolve_dynamic(_v, t),
+                            label=key)
+                        probe = value.static_at(0.0)
+                        if isinstance(probe, Range) or (
+                                isinstance(probe, (tuple, list))
+                                and any(isinstance(p, Range) for p in probe)):
+                            raise LangRuntimeError(
+                                f"render() '{key}' mixes a keyframe range "
+                                f"with a time-varying value; express the "
+                                f"motion as a single $t expression instead "
+                                f"(e.g. scale=0.5 + $t * 0.2).")
+                        kw[key] = DynExpr(
+                            value, self, env,
+                            fps=self.config.get("fps", 30), label=key)
+                    else:
+                        kw[key] = value
             elif isinstance(a, Tree) and a.data == "posarg":
                 # Positional args (the asset, time lists) must be static;
-                # a $t here raises the helpful time_var error.
+                # time-varying values are rejected in _builtin_render.
                 pos.append(self.eval(a.children[0], env))
             else:
                 pos.append(self.eval(a, env))
@@ -1137,6 +1422,8 @@ class Evaluator:
     def _invoke(self, name: str, pos: List[Any], kw: Dict[str, Any], env: Env):
         if name in _FX_NAMES:
             return _fx_tuple(name, pos, kw)
+        if name == "render":
+            return self._builtin_render(pos, kw, env)
         builtin = getattr(self, f"_builtin_{name}", None)
         if builtin is not None:
             return builtin(pos, kw)
@@ -1224,10 +1511,16 @@ class Evaluator:
     def _builtin_shape(self, pos, kw):
         stype = str(pos[0]) if pos else str(kw.pop("type", "rect"))
         params = {k: v for k, v in kw.items() if k != "type"}
+        for k, v in params.items():
+            if _contains_timevalue(v) and k in (
+                    "color", "colour", "fill", "stroke_color", "gradient"):
+                raise LangRuntimeError(TIME_STATIC_MSG.format(f"'{k}'"))
         params = {k: (int(v) if isinstance(v, float) and v.is_integer() else v)
                   for k, v in params.items()}
         try:
             img = generate_shape(stype, **params)
+        except LangRuntimeError:
+            raise
         except Exception as exc:
             print(f"[DSL Warning] shape('{stype}') failed: {exc}")
             img = create_fallback_image(stype)
@@ -1259,6 +1552,8 @@ class Evaluator:
         control the SVG raster resolution (or resize rasters).
         """
         src = str(raw_path)
+        if _contains_timevalue(raw_path):
+            raise LangRuntimeError(TIME_STATIC_MSG.format("Image paths"))
         path = self._resolve_path(src)
         width = kw.get("width")
         height = kw.get("height")
@@ -1353,6 +1648,10 @@ class Evaluator:
         gradient = kw.pop("gradient", None)
         stroke_color = kw.pop("stroke_color", None)
         stroke_width = kw.pop("stroke_width", 0)
+        for k, v in (("fill", fill), ("gradient", gradient),
+                     ("stroke_color", stroke_color)):
+            if _contains_timevalue(v):
+                raise LangRuntimeError(TIME_STATIC_MSG.format(f"'{k}'"))
         paint_mode = fill is not None or gradient is not None or stroke_color
 
         stripped = src.lstrip()
@@ -1408,6 +1707,8 @@ class Evaluator:
         return self._web_image(str(pos[0]))
 
     def _web_image(self, query: str) -> Asset:
+        if _contains_timevalue(query):
+            raise LangRuntimeError(TIME_STATIC_MSG.format("Web queries"))
         roots = (os.path.join(self.base_dir, "assets"), self.base_dir,
                  os.path.join(os.getcwd(), "assets"), os.getcwd())
         for ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".svgz"):
@@ -1430,6 +1731,14 @@ class Evaluator:
         return Asset("image", img, is_shape=False)
 
     def _builtin_video(self, pos, kw):
+        if not pos:
+            raise LangRuntimeError("video() requires a path.")
+        if _contains_timevalue(pos[0]):
+            raise LangRuntimeError(TIME_STATIC_MSG.format("Video paths"))
+        for k in ("start", "end", "stop", "speed"):
+            if _contains_timevalue(kw.get(k)):
+                raise LangRuntimeError(
+                    TIME_STATIC_MSG.format(f"video() '{k}'"))
         path = self._resolve_path(str(pos[0]))
         return VideoAsset(path, source_start=kw.get("start"),
                           source_end=kw.get("end", kw.get("stop")),
@@ -1450,6 +1759,10 @@ class Evaluator:
                 for s, e in (normalise_interval(iv) for iv in intervals)]
 
     def _builtin_audio(self, pos, kw):
+        if not pos:
+            raise LangRuntimeError("audio() requires a path.")
+        if _contains_timevalue(pos[0]):
+            raise LangRuntimeError(TIME_STATIC_MSG.format("Audio paths"))
         return Asset("audio", self._resolve_path(str(pos[0])))
 
     def _builtin_load_font(self, pos, kw):
@@ -1472,7 +1785,8 @@ class Evaluator:
 
         Stamps ``transition_out`` on the *from* spec and ``transition_in``
         on the *to* spec; overlap the layers' ``time=`` windows by
-        ``duration`` for a true blend.
+        ``duration`` for a true blend. ``from``/``to`` also accept named
+        ``scene Name:`` blocks, wiring every layer they committed.
         """
         from motion_lang.transitions import transition_statement
         args_node = next((c for c in node.children
@@ -1483,23 +1797,44 @@ class Evaluator:
         if from_spec is None or to_spec is None:
             raise LangRuntimeError(
                 "transition() needs from= and to= render() layers.")
+        from_list = (from_spec.specs if isinstance(from_spec, Scene)
+                     else [from_spec])
+        to_list = (to_spec.specs if isinstance(to_spec, Scene)
+                   else [to_spec])
+        if not from_list or not to_list:
+            raise LangRuntimeError(
+                "transition() needs non-empty scenes/layers on both sides.")
         kind = kw.get("type", kw.get("kind", "crossfade"))
         duration = float(kw.get("duration", 0.5))
         params = {k: v for k, v in kw.items()
                   if k not in ("from", "to", "type", "kind", "duration")}
-        record = transition_statement(from_spec, to_spec, type=str(kind),
-                                      duration=duration, **params)
-        self.transitions.append(record)
-        return record
+        records = []
+        for f in from_list:
+            for t in to_list:
+                try:
+                    records.append(transition_statement(
+                        f, t, type=str(kind), duration=duration, **params))
+                except ValueError as exc:
+                    raise LangRuntimeError(f"transition(): {exc}") from exc
+        self.transitions.extend(records)
+        return records[0] if len(records) == 1 else records
 
-    def _builtin_render(self, pos, kw):
+    def _builtin_render(self, pos, kw, env=None):
         if not pos:
             raise LangRuntimeError("render() requires an asset argument.")
         asset = pos[0]
+        if _contains_timevalue(asset):
+            raise LangRuntimeError(
+                "render() assets cannot vary with time; pick the asset "
+                "statically and animate pos/scale/opacity/rotation instead.")
         if not isinstance(asset, (Asset, VideoAsset)):
             raise LangRuntimeError("render() expects an asset (shape/text/image/video).")
         kw = dict(kw)
         time = kw.pop("time", None)
+        if _contains_timevalue(time):
+            raise LangRuntimeError(
+                "render() time=[...] windows are static; animate the motion "
+                "with pos/scale/opacity/rotation ($t) instead of the window.")
         start, end = 0.0, 6.0
         if isinstance(time, (list, tuple)) and len(time) >= 2:
             start, end = float(time[0]), float(time[1])
@@ -1540,12 +1875,32 @@ class Evaluator:
             rotation_y_end = rotation_y.end
             rotation_y = rotation_y.start
         fx = kw.pop("fx", None) or []
+        size = kw.pop("size", None)
+        if _contains_timevalue(size):
+            raise LangRuntimeError(
+                "render() size= is static; animate size changes with "
+                "scale= ($t) instead.")
+        # Time-varying positions can also arrive via VideoAsset.pos($t);
+        # wrap them exactly like _eval_render_call does for kwargs.
+        if (_contains_timevalue(posv) or _contains_timevalue(pos_end)) \
+                and env is not None:
+            from motion_lang.math_engine import DynExpr
+
+            def _dyn(v, key):
+                return DynExpr(
+                    TimeValue(lambda t, _v=v: _resolve_dynamic(_v, t),
+                              label=key),
+                    self, env, fps=self.config.get("fps", 30), label=key)
+            if _contains_timevalue(posv):
+                posv = _dyn(posv, "pos")
+            if _contains_timevalue(pos_end):
+                pos_end = _dyn(pos_end, "pos_end")
         spec = RenderSpec(
             asset, start=start, end=end,
             pos=tuple(posv) if isinstance(posv, (list, tuple)) else posv,
             pos_end=tuple(pos_end) if isinstance(pos_end, (list, tuple)) else pos_end,
             scale=scale, scale_end=scale_end,
-            size=tuple(kw.pop("size")) if isinstance(kw.get("size"), (list, tuple)) else None,
+            size=tuple(size) if isinstance(size, (list, tuple)) else None,
             easing=kw.pop("easing", kw.pop("ease", None)),
             transition_in=kw.pop("transition_in", None),
             transition_out=kw.pop("transition_out", None),
